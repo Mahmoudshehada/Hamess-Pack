@@ -71,6 +71,7 @@ export interface User {
   phone: string;
   isAdmin: boolean;
   addresses: string[];
+  birthday?: string;
 }
 
 export enum PaymentMethod {

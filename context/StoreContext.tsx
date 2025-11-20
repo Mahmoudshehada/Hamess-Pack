@@ -13,6 +13,7 @@ interface StoreContextType {
   user: User | null;
   login: (phone: string, name?: string, email?: string) => void;
   logout: () => void;
+  updateUser: (updates: Partial<User>) => void;
   products: Product[];
   addProduct: (product: Product) => void;
   updateProduct: (product: Product) => void;
@@ -104,6 +105,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const toggleUserAdmin = (id: string) => {
     setUsers(users.map(u => u.id === id ? { ...u, isAdmin: !u.isAdmin } : u));
     addNotification('User role updated', 'success');
+  };
+
+  const updateUser = (updates: Partial<User>) => {
+    if (!user) return;
+    const updatedUser = { ...user, ...updates };
+    setUser(updatedUser);
+    setUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
+    addNotification('Profile updated successfully', 'success');
   };
 
   // Image Upload Logic
@@ -259,7 +268,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   return (
     <StoreContext.Provider value={{
-      user, login, logout,
+      user, login, logout, updateUser,
       products, addProduct, updateProduct, deleteProduct, bulkUpdatePrices,
       uploadProductImage, storedImages,
       cart, addToCart, removeFromCart, cartTotal,
