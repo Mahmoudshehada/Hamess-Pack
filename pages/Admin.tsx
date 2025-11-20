@@ -240,15 +240,22 @@ const ProductsView: React.FC = () => {
         finalProduct.id = productId;
       }
 
-      // Handle Image Upload
+      // Handle Image Upload - Safe Update Logic
       if (selectedFile) {
+        // If user selected a new file, upload it
         const storedImage = await uploadProductImage(selectedFile, productId);
         finalProduct.imageId = storedImage.id;
         finalProduct.imagePath = storedImage.path;
-        // We don't need to set 'image' manually here because the context will 
-        // resolve it via imageId, but for consistency in the 'raw' data:
-        // finalProduct.image = storedImage.data; // Optional, handled by context useMemo
+        
+        // Don't store huge base64 in the product object itself (it's in storedImages)
+        finalProduct.image = ''; 
+      } else if (finalProduct.imageId) {
+         // PRESERVE EXISTING IMAGE:
+         // If we already have an imageId and no new file selected, 
+         // keep the link and ensure we don't accidentally save a base64 blob from previewUrl
+         finalProduct.image = ''; 
       } else if (!editingProduct && !formData.image) {
+        // New product must have an image
         alert("Please upload an image for the new product");
         setIsUploading(false);
         return;
@@ -262,7 +269,7 @@ const ProductsView: React.FC = () => {
       setShowModal(false);
     } catch (error) {
       console.error("Failed to save product", error);
-      alert("Failed to save product. Please try again.");
+      // Error notification is handled in StoreContext
     } finally {
       setIsUploading(false);
     }
@@ -413,7 +420,7 @@ const ProductsView: React.FC = () => {
                            <Upload size={20} className="text-brand-600" />
                         </div>
                         <span className="text-sm font-bold">Click to Upload Image</span>
-                        <span className="text-xs text-gray-400 mt-1">JPG, PNG, WebP (Max 5MB)</span>
+                        <span className="text-xs text-gray-400 mt-1">JPG, PNG, WebP (Max 10MB)</span>
                      </div>
                   </div>
 
@@ -428,7 +435,7 @@ const ProductsView: React.FC = () => {
                           {selectedFile ? selectedFile.name : (formData.imagePath ? formData.imagePath.split('/').pop() : 'Current Image')}
                         </p>
                         <p className="text-xs text-gray-500">
-                          {selectedFile ? `${(selectedFile.size / 1024).toFixed(1)} KB` : 'Stored in system'}
+                          {selectedFile ? `${(selectedFile.size / 1024).toFixed(1)} KB (will compress)` : 'Stored in system'}
                         </p>
                         {selectedFile && (
                            <span className="inline-block mt-1 text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">New Upload</span>
@@ -451,7 +458,7 @@ const ProductsView: React.FC = () => {
                   disabled={isUploading}
                   className="flex-1 py-3 bg-brand-600 text-white rounded-lg font-bold hover:bg-brand-700 shadow-lg shadow-brand-200 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
                 >
-                  {isUploading ? 'Uploading...' : 'Save Product'}
+                  {isUploading ? 'Saving...' : 'Save Product'}
                 </button>
               </div>
             </form>

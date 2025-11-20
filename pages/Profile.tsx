@@ -1,51 +1,330 @@
 
 import React, { useState } from 'react';
 import { useStore } from '../context/StoreContext';
-import { Package, MapPin, Settings, LogOut, Phone, User as UserIcon, ChevronRight, X, Save, Calendar, Mail } from 'lucide-react';
+import { 
+  Package, MapPin, Settings, LogOut, Phone, User as UserIcon, 
+  ChevronRight, X, Save, Calendar, Mail, Lock, Globe, Bell, 
+  Plus, Trash2, Shield, Camera, Home, Map, ChevronLeft
+} from 'lucide-react';
+import { MapPicker } from '../components/MapPicker';
+import { DeliveryLocation } from '../types';
 
 interface ProfileProps {
   onLogout: () => void;
   onAdminClick: () => void;
 }
 
-export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
-  const { user, orders, updateUser } = useStore();
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    birthday: ''
-  });
+type SettingsView = 'overview' | 'edit-profile' | 'addresses' | 'add-address' | 'security' | 'general';
 
-  const ordersCount = orders.length;
-  const returnsCount = 0;
+export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
+  const { user, orders, updateUser, changeLanguage, uploadUserAvatar, addAddress, deleteAddress } = useStore();
+  const [currentView, setCurrentView] = useState<SettingsView>('overview');
+  
+  // Temporary States for Forms
+  const [profileForm, setProfileForm] = useState({ name: '', phone: '', email: '', birthday: '', country: '' });
+  const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
+  const [emailForm, setEmailForm] = useState({ newEmail: '', token: '' });
+  const [emailStep, setEmailStep] = useState<'request' | 'verify'>('request');
+  const [newAddressLabel, setNewAddressLabel] = useState('Home');
 
   if (!user) return null;
 
-  const handleEditClick = () => {
-    setFormData({
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        birthday: user.birthday || ''
+  const isRTL = user.language === 'ar';
+  
+  const ordersCount = orders.length;
+  const returnsCount = 0;
+
+  // --- Handlers ---
+
+  const handleEditProfileStart = () => {
+    setProfileForm({
+      name: user.name,
+      phone: user.phone,
+      email: user.email,
+      birthday: user.birthday || '',
+      country: user.country || 'Egypt'
     });
-    setShowEditModal(true);
+    setCurrentView('edit-profile');
   };
 
-  const handleSave = (e: React.FormEvent) => {
-      e.preventDefault();
-      updateUser(formData);
-      setShowEditModal(false);
+  const handleProfileSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateUser(profileForm);
+    setCurrentView('overview');
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 w-full md:pb-12 relative">
-      <div className="max-w-3xl mx-auto bg-white min-h-screen md:min-h-0 md:mt-6 md:rounded-3xl md:shadow-sm md:border border-gray-100 overflow-hidden flex flex-col">
-        
-        {/* Header Profile Section */}
-        <div className="bg-brand-600 p-8 pb-28 md:rounded-t-3xl text-white text-center relative z-0">
-          {/* Background Decor */}
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+       await uploadUserAvatar(e.target.files[0]);
+    }
+  };
+
+  const handleAddressAdd = (loc: DeliveryLocation) => {
+    addAddress({
+      label: newAddressLabel,
+      formattedAddress: loc.address,
+      lat: loc.lat,
+      lng: loc.lng,
+      isDefault: user.addresses.length === 0
+    });
+    setCurrentView('addresses');
+  };
+
+  // --- Translations (Simple Object for demo) ---
+  const t = {
+    orders: isRTL ? 'الطلبات' : 'Orders',
+    returns: isRTL ? 'المرتجعات' : 'Returns',
+    account: isRTL ? 'الحساب' : 'Account',
+    adminDash: isRTL ? 'لوحة التحكم' : 'Admin Dashboard',
+    editProfile: isRTL ? 'تعديل الملف الشخصي' : 'Edit Profile',
+    addresses: isRTL ? 'العناوين المحفوظة' : 'Saved Addresses',
+    security: isRTL ? 'الأمان و كلمة المرور' : 'Security & Password',
+    settings: isRTL ? 'الإعدادات العامة' : 'General Settings',
+    logout: isRTL ? 'تسجيل الخروج' : 'Log Out',
+    back: isRTL ? 'رجوع' : 'Back',
+    save: isRTL ? 'حفظ التغييرات' : 'Save Changes',
+    name: isRTL ? 'الاسم' : 'Full Name',
+    phone: isRTL ? 'رقم الهاتف' : 'Phone Number',
+    bday: isRTL ? 'تاريخ الميلاد' : 'Birthday',
+    country: isRTL ? 'البلد' : 'Country',
+    noOrders: isRTL ? 'لا يوجد طلبات حتى الآن' : 'No orders yet',
+    items: isRTL ? 'عناصر' : 'Items'
+  };
+
+  // --- Sub-Views ---
+
+  const EditProfileView = () => (
+    <div className="animate-slide-in">
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={() => setCurrentView('overview')} className="p-2 hover:bg-gray-100 rounded-full">
+           <ChevronLeft size={24} className={isRTL ? 'rotate-180' : ''} />
+        </button>
+        <h2 className="text-xl font-bold">{t.editProfile}</h2>
+      </div>
+
+      <div className="flex flex-col items-center mb-8">
+        <div className="relative group cursor-pointer">
+          <div className="w-24 h-24 rounded-full bg-brand-100 overflow-hidden border-4 border-white shadow-lg">
+            {user.avatar ? (
+              <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-brand-600 font-bold text-3xl">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+            )}
+          </div>
+          <div className="absolute bottom-0 right-0 bg-brand-600 text-white p-2 rounded-full shadow-sm border-2 border-white group-hover:scale-110 transition">
+            <Camera size={14} />
+          </div>
+          <input 
+             type="file" 
+             className="absolute inset-0 opacity-0 cursor-pointer" 
+             accept="image/*"
+             onChange={handleAvatarChange}
+          />
+        </div>
+        <p className="text-xs text-gray-400 mt-2">Tap to change photo</p>
+      </div>
+
+      <form onSubmit={handleProfileSave} className="space-y-4 max-w-md mx-auto">
+        <div>
+           <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{t.name}</label>
+           <input required type="text" value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} className="w-full p-3 bg-white border border-gray-200 rounded-xl" />
+        </div>
+        <div>
+           <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{t.phone}</label>
+           <input required type="tel" value={profileForm.phone} onChange={e => setProfileForm({...profileForm, phone: e.target.value})} className="w-full p-3 bg-white border border-gray-200 rounded-xl" />
+        </div>
+        <div>
+           <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
+           <input disabled type="email" value={profileForm.email} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-400 cursor-not-allowed" />
+           <p className="text-[10px] text-gray-400 mt-1">To change email, go to Security settings.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+           <div>
+             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{t.bday}</label>
+             <input type="date" value={profileForm.birthday} onChange={e => setProfileForm({...profileForm, birthday: e.target.value})} className="w-full p-3 bg-white border border-gray-200 rounded-xl" />
+           </div>
+           <div>
+             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{t.country}</label>
+             <select value={profileForm.country} onChange={e => setProfileForm({...profileForm, country: e.target.value})} className="w-full p-3 bg-white border border-gray-200 rounded-xl">
+                <option value="Egypt">Egypt</option>
+                <option value="UAE">UAE</option>
+                <option value="KSA">KSA</option>
+             </select>
+           </div>
+        </div>
+        <button type="submit" className="w-full py-4 bg-brand-600 text-white rounded-xl font-bold shadow-lg mt-4 flex items-center justify-center gap-2">
+          <Save size={18} /> {t.save}
+        </button>
+      </form>
+    </div>
+  );
+
+  const AddressesView = () => (
+    <div className="animate-slide-in">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setCurrentView('overview')} className="p-2 hover:bg-gray-100 rounded-full">
+             <ChevronLeft size={24} className={isRTL ? 'rotate-180' : ''} />
+          </button>
+          <h2 className="text-xl font-bold">{t.addresses}</h2>
+        </div>
+        <button onClick={() => setCurrentView('add-address')} className="text-brand-600 text-sm font-bold flex items-center gap-1">
+           <Plus size={16} /> {isRTL ? 'إضافة' : 'Add New'}
+        </button>
+      </div>
+
+      <div className="space-y-4">
+         {user.addresses.length === 0 && (
+            <div className="text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+               <MapPin className="mx-auto text-gray-300 mb-2" size={32} />
+               <p className="text-gray-400 text-sm">No saved addresses.</p>
+            </div>
+         )}
+         {user.addresses.map(addr => (
+           <div key={addr.id} className="p-4 border border-gray-200 rounded-2xl flex items-start justify-between bg-white">
+              <div className="flex items-start gap-3">
+                 <div className="mt-1 text-brand-600"><Home size={20} /></div>
+                 <div>
+                    <h4 className="font-bold text-gray-900">{addr.label} {addr.isDefault && <span className="text-[10px] bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full ml-2">Default</span>}</h4>
+                    <p className="text-sm text-gray-500 mt-1 leading-snug">{addr.formattedAddress}</p>
+                 </div>
+              </div>
+              <button onClick={() => deleteAddress(addr.id)} className="text-gray-300 hover:text-red-500 p-2">
+                 <Trash2 size={18} />
+              </button>
+           </div>
+         ))}
+      </div>
+    </div>
+  );
+
+  const AddAddressView = () => (
+    <div className="animate-slide-in h-full flex flex-col">
+      <div className="flex items-center gap-3 mb-4">
+        <button onClick={() => setCurrentView('addresses')} className="p-2 hover:bg-gray-100 rounded-full">
+           <ChevronLeft size={24} className={isRTL ? 'rotate-180' : ''} />
+        </button>
+        <h2 className="text-xl font-bold">{isRTL ? 'عنوان جديد' : 'New Address'}</h2>
+      </div>
+      
+      <div className="mb-4">
+         <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Label (e.g. Home, Work)</label>
+         <div className="flex gap-2">
+            {['Home', 'Work', 'Other'].map(l => (
+               <button key={l} onClick={() => setNewAddressLabel(l)} className={`px-4 py-2 rounded-lg text-sm font-medium border ${newAddressLabel === l ? 'bg-brand-600 text-white border-brand-600' : 'bg-white border-gray-200 text-gray-600'}`}>
+                 {l}
+               </button>
+            ))}
+         </div>
+      </div>
+
+      <div className="flex-1 bg-gray-100 rounded-2xl overflow-hidden relative border border-gray-200">
+         <MapPicker onLocationSelect={handleAddressAdd} />
+         <div className="absolute top-4 left-4 right-4 pointer-events-none z-0">
+            {/* This is just to push content down if needed, logic is inside MapPicker */}
+         </div>
+      </div>
+    </div>
+  );
+
+  const SecurityView = () => (
+    <div className="animate-slide-in">
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={() => setCurrentView('overview')} className="p-2 hover:bg-gray-100 rounded-full">
+           <ChevronLeft size={24} className={isRTL ? 'rotate-180' : ''} />
+        </button>
+        <h2 className="text-xl font-bold">{t.security}</h2>
+      </div>
+
+      <div className="space-y-8">
+         {/* Change Password */}
+         <section>
+            <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Lock size={18} /> Change Password</h3>
+            <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); alert("Password Updated!"); }}>
+               <input type="password" placeholder="Current Password" className="w-full p-3 bg-white border border-gray-200 rounded-xl" />
+               <input type="password" placeholder="New Password" className="w-full p-3 bg-white border border-gray-200 rounded-xl" />
+               <input type="password" placeholder="Confirm New Password" className="w-full p-3 bg-white border border-gray-200 rounded-xl" />
+               <button type="submit" className="px-6 py-2 bg-gray-900 text-white rounded-lg font-bold text-sm">Update Password</button>
+            </form>
+         </section>
+         
+         <hr className="border-gray-100" />
+
+         {/* Change Email */}
+         <section>
+            <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Mail size={18} /> Change Email</h3>
+            {emailStep === 'request' ? (
+               <div className="flex gap-2">
+                  <input type="email" placeholder="New Email Address" className="flex-1 p-3 bg-white border border-gray-200 rounded-xl" />
+                  <button onClick={() => setEmailStep('verify')} className="px-4 bg-brand-50 text-brand-600 font-bold rounded-xl">Verify</button>
+               </div>
+            ) : (
+               <div className="flex gap-2 animate-fade-in">
+                  <input type="text" placeholder="Enter 4-digit Token" className="flex-1 p-3 bg-white border border-gray-200 rounded-xl" />
+                  <button onClick={() => { alert("Email Changed!"); setEmailStep('request'); }} className="px-4 bg-green-600 text-white font-bold rounded-xl">Confirm</button>
+               </div>
+            )}
+         </section>
+      </div>
+    </div>
+  );
+
+  const GeneralSettingsView = () => (
+    <div className="animate-slide-in">
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={() => setCurrentView('overview')} className="p-2 hover:bg-gray-100 rounded-full">
+           <ChevronLeft size={24} className={isRTL ? 'rotate-180' : ''} />
+        </button>
+        <h2 className="text-xl font-bold">{t.settings}</h2>
+      </div>
+
+      <div className="space-y-4">
+         <div className="p-4 bg-white rounded-2xl border border-gray-200 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+               <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Globe size={20} /></div>
+               <div>
+                  <h4 className="font-bold">Language / اللغة</h4>
+                  <p className="text-xs text-gray-500">{user.language === 'en' ? 'English' : 'العربية'}</p>
+               </div>
+            </div>
+            <button 
+               onClick={() => changeLanguage(user.language === 'en' ? 'ar' : 'en')}
+               className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-bold transition"
+            >
+               {user.language === 'en' ? 'العربية' : 'English'}
+            </button>
+         </div>
+
+         <div className="p-4 bg-white rounded-2xl border border-gray-200 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+               <div className="p-2 bg-yellow-50 text-yellow-600 rounded-lg"><Bell size={20} /></div>
+               <div>
+                  <h4 className="font-bold">{isRTL ? 'الإشعارات' : 'Notifications'}</h4>
+                  <p className="text-xs text-gray-500">{user.notificationsEnabled ? 'On' : 'Off'}</p>
+               </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={user.notificationsEnabled} 
+                onChange={() => updateUser({ notificationsEnabled: !user.notificationsEnabled })} 
+                className="sr-only peer" 
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+            </label>
+         </div>
+      </div>
+    </div>
+  );
+
+  // --- Main Overview View ---
+
+  const Overview = () => (
+    <>
+      {/* Header Profile Section */}
+      <div className="bg-brand-600 p-8 pb-28 md:rounded-t-3xl text-white text-center relative z-0">
           <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-20 pointer-events-none">
              <div className="absolute -top-24 -right-24 w-64 h-64 bg-white rounded-full blur-3xl"></div>
              <div className="absolute bottom-0 left-0 w-48 h-48 bg-brand-900 rounded-full blur-3xl"></div>
@@ -53,7 +332,11 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
 
           <div className="relative z-10">
             <div className="w-24 h-24 bg-white rounded-full mx-auto mb-4 border-4 border-brand-400/50 overflow-hidden shadow-xl flex items-center justify-center">
-              <span className="text-3xl font-bold text-brand-600">{user.name.charAt(0).toUpperCase()}</span>
+              {user.avatar ? (
+                 <img src={user.avatar} className="w-full h-full object-cover" />
+              ) : (
+                 <span className="text-3xl font-bold text-brand-600">{user.name.charAt(0).toUpperCase()}</span>
+              )}
             </div>
             <h1 className="text-2xl font-bold tracking-tight">{user.name}</h1>
             <p className="text-brand-100 text-sm font-medium mt-1 opacity-90">{user.phone}</p>
@@ -63,74 +346,82 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
         <div className="flex-1 bg-gray-50 px-4 md:px-8 pb-12 relative z-10">
           
           {/* Floating Stats Card */}
-          <div className="-mt-14 relative z-20 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 max-w-sm mx-auto overflow-hidden">
-            <div className="grid grid-cols-2 divide-x divide-gray-50">
+          <div className="-mt-14 relative z-20 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 max-w-sm mx-auto overflow-hidden mb-8">
+            <div className="grid grid-cols-2 divide-x divide-gray-50 rtl:divide-x-reverse">
               <div className="p-6 text-center group cursor-pointer hover:bg-gray-50 transition-colors">
                 <span className="block text-3xl font-bold text-brand-600 mb-1 group-hover:scale-105 transition-transform">
                   {ordersCount}
                 </span>
-                <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">Orders</span>
+                <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">{t.orders}</span>
               </div>
               <div className="p-6 text-center group cursor-pointer hover:bg-gray-50 transition-colors">
                 <span className="block text-3xl font-bold text-brand-600 mb-1 group-hover:scale-105 transition-transform">
                   {returnsCount}
                 </span>
-                <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">Returns</span>
+                <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">{t.returns}</span>
               </div>
             </div>
           </div>
 
           {/* Menu Content */}
-          <div className="mt-8 space-y-8">
+          <div className="space-y-8">
             
             {/* Account Settings */}
             <div>
-               <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 ml-1">Account</h2>
+               <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 ml-1">{t.account}</h2>
                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden divide-y divide-gray-50">
                  {user.isAdmin && (
                    <button 
                     onClick={onAdminClick}
-                    className="w-full p-4 flex items-center gap-4 hover:bg-gray-50 transition text-left group"
+                    className="w-full p-4 flex items-center gap-4 hover:bg-gray-50 transition text-left group text-start"
                    >
                      <div className="w-10 h-10 rounded-full bg-gray-900 text-white flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
                         <Settings size={18} />
                      </div>
                      <div className="flex-1">
-                        <span className="block font-bold text-gray-900">Admin Dashboard</span>
-                        <span className="text-xs text-gray-500">Manage products & orders</span>
+                        <span className="block font-bold text-gray-900">{t.adminDash}</span>
                      </div>
-                     <ChevronRight size={18} className="text-gray-300" />
+                     <ChevronRight size={18} className={`text-gray-300 ${isRTL ? 'rotate-180' : ''}`} />
                    </button>
                  )}
                  
-                 <button 
-                    onClick={handleEditClick}
-                    className="w-full p-4 flex items-center gap-4 hover:bg-gray-50 transition text-left"
-                 >
+                 <button onClick={handleEditProfileStart} className="w-full p-4 flex items-center gap-4 hover:bg-gray-50 transition text-start">
                    <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><UserIcon size={18}/></div>
                    <div className="flex-1">
-                     <span className="block font-medium text-gray-700">Edit Profile</span>
-                     <span className="text-xs text-gray-500">{user.email} • {user.birthday ? user.birthday : 'Add Birthday'}</span>
+                     <span className="block font-medium text-gray-700">{t.editProfile}</span>
+                     <span className="text-xs text-gray-500">{user.email}</span>
                    </div>
-                   <ChevronRight size={18} className="text-gray-300" />
+                   <ChevronRight size={18} className={`text-gray-300 ${isRTL ? 'rotate-180' : ''}`} />
                  </button>
                  
-                 <button className="w-full p-4 flex items-center gap-4 hover:bg-gray-50 transition text-left">
+                 <button onClick={() => setCurrentView('addresses')} className="w-full p-4 flex items-center gap-4 hover:bg-gray-50 transition text-start">
                    <div className="w-10 h-10 rounded-full bg-green-50 text-green-600 flex items-center justify-center"><MapPin size={18}/></div>
-                   <span className="flex-1 font-medium text-gray-700">Saved Addresses</span>
-                   <ChevronRight size={18} className="text-gray-300" />
+                   <span className="flex-1 font-medium text-gray-700">{t.addresses}</span>
+                   <ChevronRight size={18} className={`text-gray-300 ${isRTL ? 'rotate-180' : ''}`} />
+                 </button>
+
+                 <button onClick={() => setCurrentView('security')} className="w-full p-4 flex items-center gap-4 hover:bg-gray-50 transition text-start">
+                   <div className="w-10 h-10 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center"><Shield size={18}/></div>
+                   <span className="flex-1 font-medium text-gray-700">{t.security}</span>
+                   <ChevronRight size={18} className={`text-gray-300 ${isRTL ? 'rotate-180' : ''}`} />
+                 </button>
+                 
+                 <button onClick={() => setCurrentView('general')} className="w-full p-4 flex items-center gap-4 hover:bg-gray-50 transition text-start">
+                   <div className="w-10 h-10 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center"><Settings size={18}/></div>
+                   <span className="flex-1 font-medium text-gray-700">{t.settings}</span>
+                   <ChevronRight size={18} className={`text-gray-300 ${isRTL ? 'rotate-180' : ''}`} />
                  </button>
                </div>
             </div>
 
             {/* Recent Orders */}
             <div>
-              <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 ml-1">History</h2>
+              <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 ml-1">{t.orders}</h2>
               <div className="space-y-3">
                 {orders.length === 0 ? (
                   <div className="text-center py-8 bg-white rounded-2xl border border-gray-100 border-dashed">
                     <Package size={32} className="mx-auto text-gray-300 mb-2" />
-                    <p className="text-gray-400 text-sm">No orders yet.</p>
+                    <p className="text-gray-400 text-sm">{t.noOrders}</p>
                   </div>
                 ) : (
                   orders.slice(0, 3).map(order => (
@@ -140,7 +431,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
                           #{order.id.slice(-4)}
                         </div>
                         <div>
-                           <p className="font-bold text-gray-900">{order.items.length} Items</p>
+                           <p className="font-bold text-gray-900">{order.items.length} {t.items}</p>
                            <p className="text-xs text-gray-500">{new Date(order.date).toLocaleDateString()} • {order.status}</p>
                         </div>
                       </div>
@@ -152,95 +443,25 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
             </div>
 
             <button onClick={onLogout} className="w-full p-4 rounded-2xl border border-red-100 text-red-500 bg-white hover:bg-red-50 transition font-medium flex items-center justify-center gap-2">
-              <LogOut size={18} /> Log Out
+              <LogOut size={18} /> {t.logout}
             </button>
           </div>
         </div>
+    </>
+  );
+
+  // --- Main Render ---
+
+  return (
+    <div className="min-h-screen bg-gray-50 w-full md:pb-12 relative">
+      <div className="max-w-3xl mx-auto bg-white min-h-screen md:min-h-0 md:mt-6 md:rounded-3xl md:shadow-sm md:border border-gray-100 overflow-hidden flex flex-col">
+         {currentView === 'overview' && <Overview />}
+         {currentView === 'edit-profile' && <EditProfileView />}
+         {currentView === 'addresses' && <AddressesView />}
+         {currentView === 'add-address' && <AddAddressView />}
+         {currentView === 'security' && <SecurityView />}
+         {currentView === 'general' && <GeneralSettingsView />}
       </div>
-
-      {/* Edit Profile Modal */}
-      {showEditModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in">
-            <div className="bg-white rounded-3xl w-full max-w-md p-6 relative shadow-2xl animate-slide-in">
-                <button 
-                    onClick={() => setShowEditModal(false)} 
-                    className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 transition"
-                >
-                    <X size={20} />
-                </button>
-
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Edit Profile</h2>
-
-                <form onSubmit={handleSave} className="space-y-4">
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Full Name</label>
-                        <div className="relative">
-                            <UserIcon className="absolute left-3 top-3.5 text-gray-400" size={18} />
-                            <input 
-                                type="text" 
-                                value={formData.name}
-                                onChange={e => setFormData({...formData, name: e.target.value})}
-                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none"
-                                placeholder="Your Name"
-                                required
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone Number</label>
-                        <div className="relative">
-                            <Phone className="absolute left-3 top-3.5 text-gray-400" size={18} />
-                            <input 
-                                type="tel" 
-                                value={formData.phone}
-                                onChange={e => setFormData({...formData, phone: e.target.value})}
-                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none"
-                                placeholder="Phone Number"
-                                required
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email Address</label>
-                        <div className="relative">
-                            <Mail className="absolute left-3 top-3.5 text-gray-400" size={18} />
-                            <input 
-                                type="email" 
-                                value={formData.email}
-                                onChange={e => setFormData({...formData, email: e.target.value})}
-                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none"
-                                placeholder="email@example.com"
-                                required
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Birthday</label>
-                        <div className="relative">
-                            <Calendar className="absolute left-3 top-3.5 text-gray-400" size={18} />
-                            <input 
-                                type="date" 
-                                value={formData.birthday}
-                                onChange={e => setFormData({...formData, birthday: e.target.value})}
-                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none text-gray-600"
-                            />
-                        </div>
-                        <p className="text-[10px] text-gray-400 mt-1">We'll send you a special treat on your birthday! 🎉</p>
-                    </div>
-
-                    <button 
-                        type="submit" 
-                        className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold hover:bg-brand-700 transition shadow-lg shadow-brand-200 flex items-center justify-center gap-2 mt-4"
-                    >
-                        <Save size={18} /> Save Changes
-                    </button>
-                </form>
-            </div>
-        </div>
-      )}
     </div>
   );
 };

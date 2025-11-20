@@ -40,6 +40,16 @@ export interface CartItem extends Product {
   costPrice?: number; // Snapshot of cost at time of purchase
 }
 
+export interface Address {
+  id: string;
+  label: string; // e.g., "Home", "Office"
+  formattedAddress: string;
+  lat: number;
+  lng: number;
+  details?: string; // Floor, Apt, etc.
+  isDefault: boolean;
+}
+
 export interface DeliveryLocation {
   address: string;
   lat: number;
@@ -70,8 +80,12 @@ export interface User {
   email: string;
   phone: string;
   isAdmin: boolean;
-  addresses: string[];
+  addresses: Address[];
   birthday?: string;
+  avatar?: string; // Base64 or URL
+  language: 'en' | 'ar';
+  notificationsEnabled: boolean;
+  country: string;
 }
 
 export enum PaymentMethod {

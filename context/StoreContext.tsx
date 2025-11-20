@@ -1,6 +1,6 @@
 
-import React, { createContext, useContext, useState, ReactNode, useMemo } from 'react';
-import { CartItem, Product, Order, User, Coupon, AppSettings, PaymentMethod, Category, StoredImage, DeliveryLocation } from '../types';
+import React, { createContext, useContext, useState, ReactNode, useMemo, useEffect, useCallback } from 'react';
+import { CartItem, Product, Order, User, Coupon, AppSettings, PaymentMethod, Category, StoredImage, DeliveryLocation, Address } from '../types';
 import { MOCK_PRODUCTS as INITIAL_PRODUCTS } from '../constants';
 
 export interface Notification {
@@ -14,6 +14,13 @@ interface StoreContextType {
   login: (phone: string, name?: string, email?: string) => void;
   logout: () => void;
   updateUser: (updates: Partial<User>) => void;
+  changeLanguage: (lang: 'en' | 'ar') => void;
+  
+  // Address Management
+  addAddress: (address: Omit<Address, 'id'>) => void;
+  deleteAddress: (id: string) => void;
+  
+  // Products
   products: Product[];
   addProduct: (product: Product) => void;
   updateProduct: (product: Product) => void;
@@ -22,8 +29,10 @@ interface StoreContextType {
   
   // Image Handling
   uploadProductImage: (file: File, productId: string) => Promise<StoredImage>;
+  uploadUserAvatar: (file: File) => Promise<string>;
   storedImages: StoredImage[];
   
+  // Cart & Orders
   cart: CartItem[];
   addToCart: (product: Product, quantity: number, color?: string, note?: string) => void;
   removeFromCart: (id: string) => void;
@@ -31,6 +40,8 @@ interface StoreContextType {
   placeOrder: (location: DeliveryLocation, paymentMethod: PaymentMethod) => void;
   orders: Order[];
   updateOrderStatus: (id: string, status: Order['status']) => void;
+  
+  // Admin
   users: User[];
   toggleUserAdmin: (id: string) => void;
   coupons: Coupon[];
@@ -38,6 +49,8 @@ interface StoreContextType {
   deleteCoupon: (id: string) => void;
   settings: AppSettings;
   updateSettings: (settings: AppSettings) => void;
+  
+  // System
   notifications: Notification[];
   addNotification: (message: string, type: 'success' | 'info' | 'error') => void;
   removeNotification: (id: string) => void;
@@ -45,42 +58,157 @@ interface StoreContextType {
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
-export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [rawProducts, setRawProducts] = useState<Product[]>(INITIAL_PRODUCTS);
-  const [storedImages, setStoredImages] = useState<StoredImage[]>([]);
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [users, setUsers] = useState<User[]>([
-    { id: '1', name: 'Admin User', phone: '0000', email: 'admin@hamess.com', isAdmin: true, addresses: ['Cairo, Egypt'] },
-    { id: 'manager-1', name: 'mahmoudshehada', phone: '01010340487', email: 'msbas999@gmail.com', isAdmin: true, addresses: [] }
-  ]);
-  const [coupons, setCoupons] = useState<Coupon[]>([]);
-  const [settings, setSettings] = useState<AppSettings>({
-    brandColor: '#512D6D',
-    currency: 'EGP',
-    paymentGateways: { paymob: true, fawry: true, stripe: false },
-    shipping: { flatRate: 50, freeShippingThreshold: 1000 }
+// Helper to safely load from localStorage
+const loadState = <T,>(key: string, fallback: T): T => {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : fallback;
+  } catch (e) {
+    console.warn(`Failed to load state for ${key}`, e);
+    return fallback;
+  }
+};
+
+// Image Compression Utility (800x800, 0.8 Quality)
+const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.8): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height *= maxWidth / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width *= maxHeight / height;
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            // Compress to JPEG
+            resolve(canvas.toDataURL('image/jpeg', quality)); 
+        } else {
+            resolve(event.target?.result as string);
+        }
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
   });
+};
+
+export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  // Notification Helpers
-  const addNotification = (message: string, type: 'success' | 'info' | 'error') => {
+  const addNotification = useCallback((message: string, type: 'success' | 'info' | 'error') => {
     const id = Date.now().toString();
     setNotifications(prev => [...prev, { id, message, type }]);
-    setTimeout(() => removeNotification(id), 3000);
-  };
+    setTimeout(() => removeNotification(id), 4000);
+  }, []);
 
   const removeNotification = (id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
-  // User Logic
+  // Safe Save Helper
+  const saveState = useCallback((key: string, value: any) => {
+    try {
+      const serialized = JSON.stringify(value);
+      localStorage.setItem(key, serialized);
+    } catch (e) {
+      console.error(`Failed to save ${key}`, e);
+      if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
+         addNotification(`Storage Limit Reached! Failed to save ${key === 'hp_images' ? 'Images' : 'Data'}.`, 'error');
+      }
+    }
+  }, [addNotification]);
+
+  // Initialize state
+  const [user, setUser] = useState<User | null>(() => loadState('hp_user', null));
+  
+  const [rawProducts, setRawProducts] = useState<Product[]>(() => 
+    loadState('hp_products', INITIAL_PRODUCTS)
+  );
+  
+  const [storedImages, setStoredImages] = useState<StoredImage[]>(() => 
+    loadState('hp_images', [])
+  );
+  
+  const [cart, setCart] = useState<CartItem[]>(() => 
+    loadState('hp_cart', [])
+  );
+  
+  const [orders, setOrders] = useState<Order[]>(() => 
+    loadState('hp_orders', [])
+  );
+  
+  const [users, setUsers] = useState<User[]>(() => 
+    loadState('hp_users', [
+      { 
+        id: '1', name: 'Admin User', phone: '0000', email: 'admin@hamess.com', isAdmin: true, 
+        addresses: [], language: 'en', notificationsEnabled: true, country: 'Egypt' 
+      },
+      { 
+        id: 'manager-1', name: 'mahmoudshehada', phone: '01010340487', email: 'msbas999@gmail.com', isAdmin: true, 
+        addresses: [], language: 'en', notificationsEnabled: true, country: 'Egypt' 
+      }
+    ])
+  );
+
+  const [coupons, setCoupons] = useState<Coupon[]>(() => 
+    loadState('hp_coupons', [])
+  );
+  
+  const [settings, setSettings] = useState<AppSettings>(() => 
+    loadState('hp_settings', {
+      brandColor: '#512D6D',
+      currency: 'EGP',
+      paymentGateways: { paymob: true, fawry: true, stripe: false },
+      shipping: { flatRate: 50, freeShippingThreshold: 1000 }
+    })
+  );
+
+  // Persistence Effects
+  useEffect(() => { saveState('hp_user', user); }, [user, saveState]);
+  useEffect(() => { saveState('hp_products', rawProducts); }, [rawProducts, saveState]);
+  useEffect(() => { saveState('hp_images', storedImages); }, [storedImages, saveState]);
+  useEffect(() => { saveState('hp_cart', cart); }, [cart, saveState]);
+  useEffect(() => { saveState('hp_orders', orders); }, [orders, saveState]);
+  useEffect(() => { saveState('hp_users', users); }, [users, saveState]);
+  useEffect(() => { saveState('hp_coupons', coupons); }, [coupons, saveState]);
+  useEffect(() => { saveState('hp_settings', settings); }, [settings, saveState]);
+
+  // Language & Brand Effect
+  useEffect(() => {
+    document.documentElement.style.setProperty('--color-brand-600', settings.brandColor);
+    // Apply Language / RTL
+    if (user?.language) {
+      document.documentElement.lang = user.language;
+      document.documentElement.dir = user.language === 'ar' ? 'rtl' : 'ltr';
+    }
+  }, [settings.brandColor, user?.language]);
+
+  // --- User Logic ---
   const login = (phone: string, name?: string, email?: string) => {
     const existingUser = users.find(u => u.phone === phone);
     if (existingUser) {
       setUser(existingUser);
-      addNotification(`Welcome back, ${existingUser.name}!`, 'success');
+      addNotification(existingUser.language === 'ar' ? `مرحباً بك ${existingUser.name}` : `Welcome back, ${existingUser.name}!`, 'success');
     } else if (name && email) {
       const newUser: User = {
         id: Date.now().toString(),
@@ -88,9 +216,12 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         email,
         phone,
         isAdmin: false,
-        addresses: []
+        addresses: [],
+        language: 'en',
+        notificationsEnabled: true,
+        country: 'Egypt'
       };
-      setUsers([...users, newUser]);
+      setUsers(prev => [...prev, newUser]);
       setUser(newUser);
       addNotification('Account created successfully!', 'success');
     }
@@ -100,6 +231,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setUser(null);
     setCart([]);
     addNotification('Logged out successfully', 'info');
+    // Reset direction to default
+    document.documentElement.dir = 'ltr';
   };
 
   const toggleUserAdmin = (id: string) => {
@@ -115,34 +248,66 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     addNotification('Profile updated successfully', 'success');
   };
 
-  // Image Upload Logic
-  const uploadProductImage = (file: File, productId: string): Promise<StoredImage> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64Data = reader.result as string;
-        const ext = file.name.split('.').pop() || 'jpg';
-        const timestamp = Date.now();
-        
-        const newImage: StoredImage = {
-          id: `img_${timestamp}_${Math.random().toString(36).substr(2, 9)}`,
-          productId: productId,
-          path: `/uploads/products/${productId}_${timestamp}.${ext}`,
-          data: base64Data,
-          uploadDate: new Date().toISOString(),
-          mimeType: file.type,
-          status: 'active'
-        };
-
-        setStoredImages(prev => [...prev, newImage]);
-        resolve(newImage);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+  const changeLanguage = (lang: 'en' | 'ar') => {
+    if (!user) return;
+    updateUser({ language: lang });
   };
 
-  // Product Logic with Image Resolution
+  const addAddress = (addressData: Omit<Address, 'id'>) => {
+    if (!user) return;
+    const newAddress: Address = {
+      ...addressData,
+      id: Date.now().toString()
+    };
+    const updatedAddresses = [...user.addresses, newAddress];
+    updateUser({ addresses: updatedAddresses });
+  };
+
+  const deleteAddress = (id: string) => {
+    if (!user) return;
+    updateUser({ addresses: user.addresses.filter(a => a.id !== id) });
+  };
+
+  // --- Image Logic ---
+  const uploadProductImage = async (file: File, productId: string): Promise<StoredImage> => {
+    try {
+      if (file.size > 15 * 1024 * 1024) throw new Error("File too large.");
+      const base64Data = await compressImage(file, 800, 800, 0.8);
+      
+      const ext = file.name.split('.').pop() || 'jpg';
+      const timestamp = Date.now();
+      
+      const newImage: StoredImage = {
+        id: `img_${timestamp}_${Math.random().toString(36).substr(2, 9)}`,
+        productId: productId,
+        path: `/uploads/products/${productId}_${timestamp}.${ext}`,
+        data: base64Data,
+        uploadDate: new Date().toISOString(),
+        mimeType: 'image/jpeg',
+        status: 'active'
+      };
+
+      setStoredImages(prev => [...prev, newImage]);
+      return newImage;
+    } catch (error) {
+      console.error("Failed to process image", error);
+      addNotification('Failed to upload image.', 'error');
+      throw error;
+    }
+  };
+
+  const uploadUserAvatar = async (file: File): Promise<string> => {
+     try {
+       const base64Data = await compressImage(file, 400, 400, 0.8);
+       if (user) updateUser({ avatar: base64Data });
+       return base64Data;
+     } catch (e) {
+       addNotification('Failed to update avatar', 'error');
+       throw e;
+     }
+  };
+
+  // --- Product Logic ---
   const products = useMemo(() => {
     return rawProducts.map(product => {
       if (product.imageId) {
@@ -182,7 +347,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     addNotification('Prices updated successfully', 'success');
   };
 
-  // Cart Logic
+  // --- Cart & Orders ---
   const addToCart = (product: Product, quantity: number, color?: string, note?: string) => {
     const existingItem = cart.find(item => 
       item.id === product.id && 
@@ -208,18 +373,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-  // Order Logic
   const placeOrder = (location: DeliveryLocation, paymentMethod: PaymentMethod) => {
     if (!user) return;
     
-    // Calculate dynamic delivery fee based on distance if available, else flat rate
     let deliveryFee = settings.shipping.flatRate;
     if (location.distanceKm) {
-      // Example: 10 EGP base + 2 EGP per km
       deliveryFee = Math.max(deliveryFee, Math.ceil(10 + (location.distanceKm * 2)));
     }
 
-    // Check free shipping
     if (cartTotal >= settings.shipping.freeShippingThreshold) {
       deliveryFee = 0;
     }
@@ -230,8 +391,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       items: [...cart],
       total: cartTotal + deliveryFee,
       status: 'Processing',
-      address: location.address, // Simplified string for list view
-      deliveryLocation: location, // Full structured data
+      address: location.address,
+      deliveryLocation: location,
       paymentMethod,
       customerName: user.name,
       customerPhone: user.phone,
@@ -248,7 +409,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     addNotification(`Order #${id} updated to ${status}`, 'info');
   };
 
-  // Coupon Logic
+  // --- Coupons ---
   const addCoupon = (coupon: Coupon) => {
     setCoupons([...coupons, coupon]);
     addNotification('Coupon created', 'success');
@@ -259,18 +420,18 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     addNotification('Coupon deleted', 'info');
   };
 
-  // Settings
+  // --- Settings ---
   const updateSettings = (newSettings: AppSettings) => {
     setSettings(newSettings);
-    document.documentElement.style.setProperty('--color-brand-600', newSettings.brandColor);
     addNotification('Settings saved', 'success');
   };
 
   return (
     <StoreContext.Provider value={{
-      user, login, logout, updateUser,
+      user, login, logout, updateUser, changeLanguage,
+      addAddress, deleteAddress,
       products, addProduct, updateProduct, deleteProduct, bulkUpdatePrices,
-      uploadProductImage, storedImages,
+      uploadProductImage, uploadUserAvatar, storedImages,
       cart, addToCart, removeFromCart, cartTotal,
       placeOrder, orders, updateOrderStatus,
       users, toggleUserAdmin,
