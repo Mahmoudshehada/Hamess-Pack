@@ -1,11 +1,11 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
 import { 
   Package, MapPin, Settings, LogOut, Phone, User as UserIcon, 
   ChevronRight, X, Save, Calendar, Mail, Lock, Globe, Bell, 
-  Plus, Trash2, Shield, Camera, Home, Map, ChevronLeft, Heart
+  Plus, Trash2, Shield, Camera, Home, Map, ChevronLeft, Heart,
+  Smartphone, Monitor, Download, Share, PlusSquare
 } from 'lucide-react';
 import { AddressSetup } from '../components/AddressSetup';
 import { DeliveryLocation } from '../types';
@@ -15,7 +15,7 @@ interface ProfileProps {
   onAdminClick: () => void;
 }
 
-type SettingsView = 'overview' | 'edit-profile' | 'addresses' | 'add-address' | 'security' | 'general';
+type SettingsView = 'overview' | 'edit-profile' | 'addresses' | 'add-address' | 'security' | 'general' | 'install-app';
 
 export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
   const { user, orders, updateUser, changeLanguage, uploadUserAvatar, deleteAddress } = useStore();
@@ -113,7 +113,9 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
     delete: isRTL ? 'حذف' : 'Delete',
     default: isRTL ? 'افتراضي' : 'Default',
     hello: isRTL ? 'مرحباً' : 'Hello',
-    emptyAddr: isRTL ? 'لا توجد عناوين محفوظة' : 'No saved addresses.'
+    emptyAddr: isRTL ? 'لا توجد عناوين محفوظة' : 'No saved addresses.',
+    installApp: isRTL ? 'تحميل التطبيق' : 'Get the App',
+    installDesc: isRTL ? 'حمل التطبيق على هاتفك' : 'Download for iOS & Android'
   };
 
   // --- Sub-Views ---
@@ -296,6 +298,104 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
     </div>
   );
 
+  const InstallAppView = () => (
+    <div className="animate-slide-in p-2">
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={() => setCurrentView('overview')} className="p-2 hover:bg-gray-100 rounded-full transition">
+           <ChevronLeft size={24} className={isRTL ? 'rotate-180' : ''} />
+        </button>
+        <h2 className="text-xl font-bold">{t.installApp}</h2>
+      </div>
+      
+      <div className="space-y-6">
+         <div className="bg-brand-600 text-white p-6 rounded-3xl shadow-lg text-center">
+            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4">
+               <span className="font-serif font-bold text-brand-600 text-3xl">HP</span>
+            </div>
+            <h3 className="text-2xl font-bold mb-2">Hamess Pack</h3>
+            <p className="text-brand-100 text-sm mb-6">The best experience for party shopping.</p>
+         </div>
+
+         {/* Android */}
+         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
+            <div className="flex items-center gap-4">
+               <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
+                  <Smartphone size={24} />
+               </div>
+               <div>
+                  <h4 className="font-bold text-gray-900">Android</h4>
+                  <p className="text-xs text-gray-500">Play Store / APK</p>
+               </div>
+            </div>
+            <button 
+               onClick={() => alert("Developer Note: This would link to the Google Play Store URL.")}
+               className="px-4 py-2 bg-gray-900 text-white rounded-lg font-bold text-sm hover:bg-black transition"
+            >
+               Download
+            </button>
+         </div>
+
+         {/* iOS */}
+         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+             <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-4">
+                   <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
+                      <Smartphone size={24} />
+                   </div>
+                   <div>
+                      <h4 className="font-bold text-gray-900">iPhone / iPad</h4>
+                      <p className="text-xs text-gray-500">iOS App (TestFlight / Store)</p>
+                   </div>
+                </div>
+                {/* For production, this links to App Store. For testing, it's TestFlight public link */}
+                <button 
+                   onClick={() => alert("Developer Note: You must upload the IPA to TestFlight first, then add the Public Link here.")}
+                   className="px-4 py-2 bg-blue-50 text-blue-600 rounded-lg font-bold text-sm hover:bg-blue-100 transition"
+                >
+                   Open Store
+                </button>
+             </div>
+             
+             <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 text-sm">
+               <h5 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
+                 <Download size={16} /> Install Immediately (No Store)
+               </h5>
+               <p className="text-gray-600 mb-3 text-xs">
+                 Apple restricts direct downloads. To install now, use the "Add to Home Screen" feature:
+               </p>
+               <ol className="space-y-2 text-xs text-gray-500">
+                 <li className="flex items-center gap-2">
+                   <span className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center font-bold text-[10px]">1</span>
+                   Tap the <Share size={14} className="text-blue-500 inline" /> <b>Share</b> icon in your Safari toolbar.
+                 </li>
+                 <li className="flex items-center gap-2">
+                   <span className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center font-bold text-[10px]">2</span>
+                   Scroll down and tap <PlusSquare size={14} className="inline" /> <b>Add to Home Screen</b>.
+                 </li>
+               </ol>
+             </div>
+         </div>
+
+         {/* Desktop PWA */}
+         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+            <div className="flex items-center gap-4 mb-4">
+               <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center">
+                  <Monitor size={24} />
+               </div>
+               <div>
+                  <h4 className="font-bold text-gray-900">Desktop / Web</h4>
+                  <p className="text-xs text-gray-500">Install on Chrome or Edge</p>
+               </div>
+            </div>
+            <div className="bg-gray-50 p-3 rounded-xl text-sm text-gray-600 border border-gray-200">
+               <p className="mb-2 flex items-center gap-2"><span className="bg-gray-200 w-5 h-5 rounded-full flex items-center justify-center font-bold text-xs">1</span> Click the Install icon in your browser address bar.</p>
+               <p className="flex items-center gap-2"><span className="bg-gray-200 w-5 h-5 rounded-full flex items-center justify-center font-bold text-xs">2</span> Select "Install Hamess Pack".</p>
+            </div>
+         </div>
+      </div>
+    </div>
+  );
+
   const GeneralSettingsView = () => (
     <div className="animate-slide-in">
       <div className="flex items-center gap-3 mb-6">
@@ -440,6 +540,23 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
                  </button>
                </div>
             </div>
+            
+            {/* App Install Banner */}
+            <div onClick={() => setCurrentView('install-app')} className="cursor-pointer">
+               <div className="bg-gradient-to-r from-brand-600 to-accent-500 p-4 rounded-2xl shadow-md flex items-center justify-between text-white relative overflow-hidden group">
+                   <div className="absolute right-0 top-0 h-full w-20 bg-white/10 -skew-x-12 transform translate-x-10 group-hover:translate-x-0 transition duration-500"></div>
+                   <div className="flex items-center gap-3 relative z-10">
+                      <div className="bg-white/20 p-2 rounded-lg">
+                         <Download size={24} />
+                      </div>
+                      <div>
+                         <h3 className="font-bold">{t.installApp}</h3>
+                         <p className="text-xs text-brand-100">{t.installDesc}</p>
+                      </div>
+                   </div>
+                   <ChevronRight size={20} className={`relative z-10 ${isRTL ? 'rotate-180' : ''}`} />
+               </div>
+            </div>
 
             {/* Recent Orders */}
             <div>
@@ -492,6 +609,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
          {currentView === 'addresses' && <AddressesView />}
          {currentView === 'security' && <SecurityView />}
          {currentView === 'general' && <GeneralSettingsView />}
+         {currentView === 'install-app' && <InstallAppView />}
       </div>
     </div>
   );

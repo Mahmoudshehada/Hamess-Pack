@@ -12,44 +12,89 @@ Before deployment, ensure you possess the following accounts and credentials:
 
 ---
 
-## 2. Android Deployment (Google Play)
+## 2. Developer Build Guide (How to Compile)
 
-**Build Process:**
-1.  **Sync:** Build the React web project and sync the assets to the Android native project folder (using Capacitor).
-2.  **Configuration:** Update `AndroidManifest.xml` with your App Name, Package ID (e.g., `com.hamesspack.admin`), and Version Code.
-3.  **Signing:** Generate a **Keystore file** (`.jks`). *Crucial: Back this up securely. If lost, you cannot update the app.*
-4.  **Build Artifact:** Generate a **Signed App Bundle (.aab)**. Do not use APKs for the Play Store.
+To turn the provided React source code into installable apps, you must use **Capacitor**. Run the following commands in your terminal:
+
+### A. Initial Setup
+```bash
+# 1. Install Dependencies
+npm install
+npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/ios
+
+# 2. Initialize Capacitor (Use your own App Name and ID)
+npx cap init "Hamess Pack" com.hamesspack.admin
+
+# 3. Build the Web App
+npm run build
+```
+
+### B. Android Build
+```bash
+# 1. Add Android Platform
+npx cap add android
+
+# 2. Sync Web Build to Android
+npx cap sync
+
+# 3. Open in Android Studio to Build APK/Bundle
+npx cap open android
+```
+*Inside Android Studio: Go to `Build > Generate Signed Bundle / APK` to create the file for Google Play.*
+
+### C. iOS Build (Mac Only)
+```bash
+# 1. Add iOS Platform
+npx cap add ios
+
+# 2. Sync Web Build to iOS
+npx cap sync
+
+# 3. Open in Xcode
+npx cap open ios
+```
+*Inside Xcode: Select your target device as "Any iOS Device (arm64)" and go to `Product > Archive` to upload to TestFlight.*
+
+---
+
+## 3. Android Deployment (Google Play)
 
 **Publishing Steps:**
 1.  Create a new app in Google Play Console.
-2.  Upload the `.aab` file to the "Internal Testing" or "Production" track.
+2.  Upload the `.aab` file generated from Android Studio.
 3.  Complete the Store Listing (Screenshots, Description, Logo).
 4.  Complete the Data Safety form (disclose that you collect User IDs and Phone numbers).
 5.  Submit for Review (Usually takes 24-48 hours).
 
 ---
 
-## 3. iPhone Deployment (iOS)
+## 4. iPhone Deployment (iOS)
 
-**Build Process:**
-1.  **Sync:** Build the React web project and sync assets to the iOS native project folder.
-2.  **Xcode:** Open the project in Xcode.
-3.  **Signing:** Log in with your Apple Developer ID. Xcode will automatically manage the **Provisioning Profiles** and **Distribution Certificates**.
-4.  **Privacy Manifest:** Ensure the `PrivacyInfo.xcprivacy` file is present (required by Apple to declare data usage).
+**IMPORTANT:** iOS prevents direct file downloads from websites. You CANNOT just "download" the app like on Android. You must use one of the methods below:
 
-**Publishing Steps:**
+**A. TestFlight (For Beta/Internal Use):**
 1.  **Archive:** In Xcode, select "Any iOS Device" and run "Product > Archive".
 2.  **Upload:** Validate and upload the build to **App Store Connect**.
-3.  **TestFlight:** Once processed, the build appears in TestFlight. Add your email to "Internal Testing" to install it immediately on your phone.
-4.  **App Store:** When ready, move the TestFlight build to "Production," fill out the store metadata, and submit for Review (24-48 hours).
+3.  **Invite:** In App Store Connect, go to TestFlight and add your email.
+4.  **Install:** Open the "TestFlight" app on your iPhone and accept the invite.
+
+**B. App Store (For Public Use):**
+1.  Submit the build from TestFlight to "Review".
+2.  Once approved, the app will have a public URL on the App Store.
+
+**C. Web App / PWA (Immediate No-Code Solution):**
+1.  Open the website in **Safari**.
+2.  Tap the **Share** icon (square with arrow).
+3.  Scroll down and tap **Add to Home Screen**.
+4.  This creates an app icon that works exactly like the native app (full screen, no browser bars).
 
 ---
 
-## 4. Desktop Deployment (Web/PWA)
+## 5. Desktop Deployment (Web/PWA)
 
 **Build Process:**
-1.  Run the standard React build command to generate static files.
-2.  Upload these files to your hosting provider (e.g., Vercel).
+1.  Run `npm run build`.
+2.  Upload the `dist` or `build` folder to your hosting provider (e.g., Vercel).
 
 **Desktop App (Optional):**
 For a standalone feel without using a browser bar:
@@ -59,7 +104,7 @@ For a standalone feel without using a browser bar:
 
 ---
 
-## 5. Notifications Setup
+## 6. Notifications Setup
 
 ### A. Push Notifications (FCM & APNs)
 To send popup alerts to the mobile apps:
@@ -75,29 +120,21 @@ These are *not* push notifications; they are chat messages sent via Twilio.
 
 ---
 
-## 6. Installation Guide (End-User)
+## 7. Installation Guide (End-User)
 
 *   **Admins (Android):** Download "Hamess Pack Admin" from Google Play Store.
 *   **Admins (iOS):**
     *   *Testing:* Install "TestFlight" from App Store, accept email invite, install Hamess Pack.
     *   *Live:* Download "Hamess Pack Admin" from App Store.
+    *   *Fast:* Use the "Add to Home Screen" feature in Safari.
 *   **Admins (Desktop):** Go to admin URL -> Click "Install" in browser bar -> Open from Desktop Shortcut.
 
 ---
 
-## 7. iOS Limitations
+## 8. Troubleshooting
 
-*   **Web Push:** If using the web version (Safari) instead of the App Store version, push notifications are only supported on iOS 16.4+ and *only* if the user adds the app to their Home Screen.
-*   **App Store Review:** Apple often rejects "Web Wrappers" (apps that are just a website). To avoid rejection, ensure the app uses native features (Push Notifications, Camera for uploads) and provides a seamless, app-like UI (no footer credits, smooth navigation).
+**Q: Why does the iOS 'Download' button do nothing?**
+A: iOS security blocks direct downloads. You must set up TestFlight (Method A above) or use the "Add to Home Screen" feature (Method C).
 
----
-
-## 8. Post-Deployment Test Checklist
-
-1.  [ ] **Install:** Can you download and install the app from the Store/TestFlight?
-2.  [ ] **Login:** Does the OTP/Password login work?
-3.  [ ] **Stock:** Do products load from the database?
-4.  [ ] **Push:** Send a test notification from the Admin Panel. Does it appear on the phone lock screen?
-5.  [ ] **WhatsApp:** Place a high-value order. Does the Admin receive a WhatsApp message?
-6.  [ ] **Camera:** Can you upload a product image using the phone camera?
-7.  [ ] **Offline:** Turn on Airplane Mode. Can you still browse products (cached)?
+**Q: Why do new products disappear on refresh?**
+A: Ensure you are using the IndexedDB version of the storage logic (this is enabled by default in the new build). Check the "System Health" tab in Admin to confirm "Persistence Mode" is IndexedDB.
