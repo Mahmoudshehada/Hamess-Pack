@@ -118,6 +118,7 @@ export interface Coupon {
   usageCount: number;
 }
 
+// --- Notification Types ---
 export interface NotificationAdminProfile {
   name: string;
   phone: string;
