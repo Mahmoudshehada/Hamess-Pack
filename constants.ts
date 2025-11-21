@@ -1,10 +1,7 @@
 
 import { Category, Product } from './types';
 
-// REPLACE WITH YOUR VALID GOOGLE MAPS API KEY
-export const GOOGLE_MAPS_API_KEY = 'AIzaSyA9UfyBuKf8ocqI0AwsE5BRkared227SBI'; 
-
-// Central Store Location (e.g., Downtown Cairo) for distance calculation
+// MAPS INTEGRATION REMOVED - No API Key required
 export const STORE_LOCATION = {
   lat: 30.0444, 
   lng: 31.2357

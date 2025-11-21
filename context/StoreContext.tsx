@@ -161,11 +161,21 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [users, setUsers] = useState<User[]>(() => 
     loadState('hp_users', [
       { 
-        id: '1', name: 'Admin User', phone: '0000', email: 'admin@hamess.com', isAdmin: true, 
+        id: '1', 
+        name: 'Walid El Sheikh', 
+        phone: '01066665153', 
+        email: 'walidelsheikh011111@gmail.com', 
+        isAdmin: true, 
+        password: '$2b$10$ExampleHashForWalid666', // Simulating bcrypt hash
         addresses: [], language: 'en', notificationsEnabled: true, country: 'Egypt', birthday: ''
       },
       { 
-        id: 'manager-1', name: 'mahmoudshehada', phone: '01010340487', email: 'msbas999@gmail.com', isAdmin: true, 
+        id: '2', 
+        name: 'Mahmoud Shehada', 
+        phone: '01010340487', 
+        email: 'msbas999@gmail.com', 
+        isAdmin: true, 
+        password: '$2b$10$ExampleHashForMahmoud77', // Simulating bcrypt hash
         addresses: [], language: 'en', notificationsEnabled: true, country: 'Egypt', birthday: ''
       }
     ])
@@ -269,20 +279,27 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
     const newAddress: Address = {
       ...addressData,
-      id: Date.now().toString()
+      id: Date.now().toString(),
+      // Ensure legacy geo fields are handled if missing (now default to empty/null safe)
+      formattedAddress: addressData.formattedAddress || `${addressData.label}, ${addressData.city}, ${addressData.governorate}`,
+      lat: addressData.lat || 0,
+      lng: addressData.lng || 0,
     };
 
-    // Backend Payload Construction (Exact Match to Specs)
+    // Backend Payload Construction (Manual Only)
     const apiPayload = {
-      label: newAddress.label,
-      apartment: newAddress.apartment,
-      email: newAddress.email,
-      name: newAddress.contactName,
-      notes: newAddress.instructions, // "Address Specific Instructions"
+      userId: user.id,
       formatted_address: newAddress.formattedAddress,
-      place_id: newAddress.placeId,
-      latitude: newAddress.lat,
-      longitude: newAddress.lng
+      governorate: newAddress.governorate,
+      city: newAddress.city,
+      apartment: newAddress.apartment || null,
+      phone: newAddress.phone, // New Field
+      name: newAddress.contactName,
+      notes: newAddress.instructions || null,
+      // Geo fields null/optional
+      place_id: null,
+      latitude: null,
+      longitude: null
     };
     
     // Log for verification
@@ -413,10 +430,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (!user) return;
     
     let deliveryFee = settings.shipping.flatRate;
-    if (location.distanceKm) {
-      deliveryFee = Math.max(deliveryFee, Math.ceil(10 + (location.distanceKm * 2)));
-    }
-
+    // Manual address implies standard shipping fee
     if (cartTotal >= settings.shipping.freeShippingThreshold) {
       deliveryFee = 0;
     }

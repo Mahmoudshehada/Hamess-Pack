@@ -1,9 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
-import { PaymentMethod, DeliveryLocation } from '../types';
-import { MapPin, CreditCard, Truck, Banknote, CheckCircle, ChevronLeft, ShieldCheck, Info } from 'lucide-react';
-import { MapPicker } from '../components/MapPicker';
+import { PaymentMethod, DeliveryLocation, Address } from '../types';
+import { MapPin, CreditCard, Truck, Banknote, CheckCircle, ChevronLeft, ShieldCheck, Info, Plus, Home } from 'lucide-react';
+import { AddressSetup } from '../components/AddressSetup';
 
 interface CheckoutProps {
   onOrderComplete: () => void;
@@ -13,19 +13,23 @@ interface CheckoutProps {
 export const Checkout: React.FC<CheckoutProps> = ({ onOrderComplete, onBack }) => {
   const { cartTotal, placeOrder, user, cart, settings } = useStore();
   
-  const [deliveryLocation, setDeliveryLocation] = useState<DeliveryLocation | null>(null);
+  // If user has addresses, default to first one
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [showAddAddress, setShowAddAddress] = useState(false);
+  
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.CARD);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [notes, setNotes] = useState('');
 
-  // Dynamic Delivery Fee Logic
+  useEffect(() => {
+    if (user && user.addresses.length > 0 && !selectedAddressId) {
+        setSelectedAddressId(user.addresses[0].id);
+    }
+  }, [user, selectedAddressId]);
+
+  // Delivery Fee (Flat Rate for Manual Addresses)
   let deliveryFee = settings.shipping.flatRate;
-  if (deliveryLocation?.distanceKm) {
-    // Example formula: Base 10 + 2 per KM
-    const calcFee = Math.ceil(10 + (deliveryLocation.distanceKm * 2));
-    deliveryFee = Math.max(settings.shipping.flatRate, calcFee);
-  }
   if (cartTotal >= settings.shipping.freeShippingThreshold) {
     deliveryFee = 0;
   }
@@ -33,14 +37,22 @@ export const Checkout: React.FC<CheckoutProps> = ({ onOrderComplete, onBack }) =
   const finalTotal = cartTotal + deliveryFee;
 
   const handlePlaceOrder = () => {
-    if (!deliveryLocation) return;
+    if (!selectedAddressId || !user) return;
     
+    const addressObj = user.addresses.find(a => a.id === selectedAddressId);
+    if (!addressObj) return;
+
     setIsProcessing(true);
     
-    // Add user notes to the location object
+    // Construct Delivery Location from Address + Checkout Notes
     const finalLocation: DeliveryLocation = {
-      ...deliveryLocation,
-      notes: notes
+      addressId: addressObj.id,
+      address: `${addressObj.label}, ${addressObj.apartment ? addressObj.apartment + ', ' : ''}${addressObj.city}`,
+      governorate: addressObj.governorate,
+      city: addressObj.city,
+      notes: notes + (addressObj.instructions ? ` | ${addressObj.instructions}` : ''),
+      lat: addressObj.lat,
+      lng: addressObj.lng
     };
 
     // Simulate API call
@@ -59,7 +71,7 @@ export const Checkout: React.FC<CheckoutProps> = ({ onOrderComplete, onBack }) =
             <CheckCircle size={48} />
           </div>
           <h2 className="text-3xl font-bold text-gray-900 mb-2">Order Placed!</h2>
-          <p className="text-gray-600 mb-8">Thank you for celebrating with Hamess Pack. Your items are on the way.</p>
+          <p className="text-gray-600 mb-8">Thank you for celebrating with Hamess Pack. Your items are on the way to {user?.addresses.find(a => a.id === selectedAddressId)?.city}.</p>
           <button 
             onClick={onOrderComplete}
             className="bg-brand-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg hover:bg-brand-700 w-full"
@@ -72,7 +84,11 @@ export const Checkout: React.FC<CheckoutProps> = ({ onOrderComplete, onBack }) =
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 w-full pt-8 pb-32 md:pb-12 px-4 md:px-6">
+    <div className="min-h-screen bg-gray-50 w-full pt-8 pb-32 md:pb-12 px-4 md:px-6 relative">
+      {showAddAddress && (
+          <AddressSetup onClose={() => setShowAddAddress(false)} />
+      )}
+
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center mb-8">
           <button onClick={onBack} className="text-gray-500 hover:text-brand-600 mr-4 flex items-center gap-1 font-medium transition">
@@ -84,36 +100,62 @@ export const Checkout: React.FC<CheckoutProps> = ({ onOrderComplete, onBack }) =
         <div className="flex flex-col lg:flex-row gap-8 items-start">
           {/* Left Column: Forms */}
           <div className="flex-1 w-full space-y-6">
-            {/* Address */}
+            {/* Address Selection */}
             <section className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-              <h3 className="font-bold text-lg text-gray-900 mb-4 flex items-center gap-2">
-                <div className="bg-brand-50 p-2 rounded-lg text-brand-600"><MapPin size={20} /></div>
-                Delivery Location
-              </h3>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-bold text-lg text-gray-900 flex items-center gap-2">
+                    <div className="bg-brand-50 p-2 rounded-lg text-brand-600"><MapPin size={20} /></div>
+                    Delivery Address
+                </h3>
+                <button 
+                    onClick={() => setShowAddAddress(true)}
+                    className="text-brand-600 text-sm font-bold flex items-center gap-1 hover:bg-brand-50 px-3 py-1 rounded-lg transition"
+                >
+                    <Plus size={16} /> Add New
+                </button>
+              </div>
               
-              <div className="space-y-4">
-                 <MapPicker 
-                   onLocationSelect={setDeliveryLocation} 
-                   initialLocation={deliveryLocation || undefined}
-                 />
-
-                 {deliveryLocation && (
-                   <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                      <p className="font-bold text-sm text-gray-700">Selected Address:</p>
-                      <p className="text-sm text-gray-600 mb-2">{deliveryLocation.address}</p>
-                      <div className="flex gap-4 text-xs text-gray-500">
-                        {deliveryLocation.distanceKm && (
-                           <span><span className="font-bold">Distance:</span> {deliveryLocation.distanceKm.toFixed(1)} km</span>
-                        )}
-                        {deliveryLocation.estimatedDuration && (
-                           <span><span className="font-bold">Est. Time:</span> {deliveryLocation.estimatedDuration}</span>
-                        )}
-                      </div>
-                   </div>
+              <div className="space-y-3">
+                 {user?.addresses.length === 0 ? (
+                     <div className="text-center py-8 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">
+                         <p className="text-gray-500 text-sm mb-3">No addresses found.</p>
+                         <button 
+                            onClick={() => setShowAddAddress(true)}
+                            className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100"
+                         >
+                             Add Delivery Address
+                         </button>
+                     </div>
+                 ) : (
+                     <div className="grid gap-3">
+                         {user?.addresses.map(addr => (
+                             <div 
+                                key={addr.id}
+                                onClick={() => setSelectedAddressId(addr.id)}
+                                className={`p-4 rounded-xl border cursor-pointer transition flex items-start gap-3 ${
+                                    selectedAddressId === addr.id 
+                                    ? 'border-brand-600 bg-brand-50 ring-1 ring-brand-600' 
+                                    : 'border-gray-200 hover:border-gray-300 bg-white'
+                                }`}
+                             >
+                                 <div className={`mt-1 p-1 rounded-full ${selectedAddressId === addr.id ? 'bg-brand-600 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                                     <Home size={14} />
+                                 </div>
+                                 <div className="flex-1">
+                                     <div className="flex justify-between">
+                                        <p className="font-bold text-gray-900 text-sm">{addr.label}</p>
+                                        {selectedAddressId === addr.id && <CheckCircle size={16} className="text-brand-600" />}
+                                     </div>
+                                     <p className="text-xs text-gray-500">{addr.apartment ? `${addr.apartment}, ` : ''}{addr.city}, {addr.governorate}</p>
+                                     <p className="text-[10px] text-gray-400 mt-1">{addr.contactName} • {addr.phone}</p>
+                                 </div>
+                             </div>
+                         ))}
+                     </div>
                  )}
 
-                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Delivery Notes (Optional)</label>
+                 <div className="mt-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Delivery Instructions (Optional)</label>
                     <textarea
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
@@ -226,9 +268,9 @@ export const Checkout: React.FC<CheckoutProps> = ({ onOrderComplete, onBack }) =
 
                 <button 
                   onClick={handlePlaceOrder}
-                  disabled={!deliveryLocation || isProcessing}
+                  disabled={!selectedAddressId || isProcessing}
                   className={`w-full py-4 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all transform active:scale-95 ${
-                    !deliveryLocation || isProcessing ? 'bg-gray-300 cursor-not-allowed' : 'bg-brand-600 hover:bg-brand-700 shadow-lg shadow-brand-200'
+                    !selectedAddressId || isProcessing ? 'bg-gray-300 cursor-not-allowed' : 'bg-brand-600 hover:bg-brand-700 shadow-lg shadow-brand-200'
                   }`}
                 >
                   {isProcessing ? (
@@ -240,8 +282,8 @@ export const Checkout: React.FC<CheckoutProps> = ({ onOrderComplete, onBack }) =
                   )}
                 </button>
 
-                {!deliveryLocation && (
-                  <p className="text-xs text-red-500 text-center mt-2">Please select a delivery location.</p>
+                {!selectedAddressId && (
+                  <p className="text-xs text-red-500 text-center mt-2">Please add or select a delivery address.</p>
                 )}
 
                 <div className="mt-4 flex items-center justify-center gap-2 text-xs text-gray-400">

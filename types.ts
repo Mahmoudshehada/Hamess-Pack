@@ -1,5 +1,4 @@
 
-
 export interface Product {
   id: string;
   name: string;
@@ -43,27 +42,33 @@ export interface CartItem extends Product {
 
 export interface Address {
   id: string;
-  // Fields from Address Setup Spec
-  label: string; // Used for "Location" input (e.g. building name, street #)
+  // Manual Fields
+  label: string; // "Location (e.g. building name, street #)"
   apartment?: string; 
-  email: string;
+  governorate: string; // "Giza"
+  city: string; // "Sheikh Zayed"
+  phone: string; // Replaces email for address contact
   contactName: string;
   instructions?: string; // Address Specific Instructions
   
-  // Geo fields
-  formattedAddress: string;
-  lat: number;
-  lng: number;
+  // Legacy / Optional Geo fields (Nullable in DB)
+  formattedAddress?: string;
+  lat?: number;
+  lng?: number;
   placeId?: string;
   isDefault: boolean;
 }
 
 export interface DeliveryLocation {
-  address: string;
-  lat: number;
-  lng: number;
-  placeId?: string;
+  addressId?: string; // If selected from saved
+  address: string; // Formatted text for display
+  governorate?: string;
+  city?: string;
   notes?: string;
+  // Geo optional
+  lat?: number;
+  lng?: number;
+  placeId?: string;
   distanceKm?: number;
   estimatedDuration?: string;
 }
@@ -88,6 +93,7 @@ export interface User {
   email: string;
   phone: string;
   isAdmin: boolean;
+  password?: string; // Added for admin auth
   addresses: Address[];
   birthday?: string;
   avatar?: string; // Base64 Data URI

@@ -1,81 +1,126 @@
 
-import React, { useState, useEffect } from 'react';
-import { X, Check, MapPin, AlertTriangle, Navigation } from 'lucide-react';
-import { MapPicker } from './MapPicker';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Check, Home, User, Smartphone, FileText, Search, MapPin, Building } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
-import { DeliveryLocation } from '../types';
+import { Address } from '../types';
+
+// --- Reference Data (Egypt Governorates & Cities) ---
+const LOCATIONS = [
+  {
+    gov: "Cairo", govAr: "القاهرة",
+    cities: ["Nasr City", "Heliopolis", "Maadi", "Zamalek", "Downtown", "New Cairo", "Fifth Settlement", "Rehab", "Madinaty", "Shoubra", "Mokattam"]
+  },
+  {
+    gov: "Giza", govAr: "الجيزة",
+    cities: ["Sheikh Zayed", "6th of October", "Dokki", "Mohandessin", "Agouza", "Haram", "Faisal", "Imbaba", "Giza District"]
+  },
+  {
+    gov: "Alexandria", govAr: "الإسكندرية",
+    cities: ["Smouha", "Gleem", "Miami", "Montaza", "Stanley", "Sidi Gaber", "Agami", "Borg El Arab"]
+  },
+  {
+    gov: "Qalyubia", govAr: "القليوبية",
+    cities: ["Banha", "Shoubra El Kheima", "Qalyub", "Khanka"]
+  },
+  {
+    gov: "Sharqia", govAr: "الشرقية",
+    cities: ["Zagazig", "10th of Ramadan", "Belbeis", "Minya El Qamh"]
+  },
+  {
+    gov: "Dakahlia", govAr: "الدقهلية",
+    cities: ["Mansoura", "Talkha", "Mit Ghamr"]
+  }
+];
 
 interface AddressSetupProps {
   onClose: () => void;
-  initialAddress?: DeliveryLocation; // If editing
+  initialAddress?: Address;
 }
 
 export const AddressSetup: React.FC<AddressSetupProps> = ({ onClose, initialAddress }) => {
   const { user, addAddress } = useStore();
-  const isRTL = user?.language === 'ar';
-
+  
   // Form State
   const [form, setForm] = useState({
-    label: '', // Location (e.g. Street Name)
+    location: '', // The manual location string
     apartment: '',
-    email: user?.email || '',
+    governorate: '',
+    city: '',
+    phone: user?.phone || '',
     name: user?.name || '',
     instructions: '',
   });
-  
-  // Location State (from Map)
-  const [locationData, setLocationData] = useState<{
-    lat: number;
-    lng: number;
-    formattedAddress: string;
-    placeId?: string;
-  } | null>(null);
+
+  // Search States
+  const [govSearch, setGovSearch] = useState('');
+  const [citySearch, setCitySearch] = useState('');
+  const [showGovList, setShowGovList] = useState(false);
+  const [showCityList, setShowCityList] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    // Pre-fill if we are editing or have initial data
     if (initialAddress) {
-        setLocationData({
-            lat: initialAddress.lat,
-            lng: initialAddress.lng,
-            formattedAddress: initialAddress.address,
-            placeId: initialAddress.placeId
-        });
-        setForm(prev => ({ ...prev, label: initialAddress.address }));
+      setForm({
+        location: initialAddress.label,
+        apartment: initialAddress.apartment || '',
+        governorate: initialAddress.governorate,
+        city: initialAddress.city,
+        phone: initialAddress.phone,
+        name: initialAddress.contactName,
+        instructions: initialAddress.instructions || '',
+      });
+      setGovSearch(initialAddress.governorate);
+      setCitySearch(initialAddress.city);
     }
   }, [initialAddress]);
 
-  // Translations
-  const t = {
-    title: isRTL ? 'إعداد العنوان' : 'Setup your address',
-    save: isRTL ? 'حفظ' : 'Save',
-    location: isRTL ? 'الموقع (اسم المبنى، رقم الشارع)' : 'Location (e.g. building name, street #)',
-    apt: isRTL ? 'رقم الشقة / المنزل' : 'Apartment / House number',
-    email: isRTL ? 'البريد الإلكتروني' : 'Email Address',
-    name: isRTL ? 'الاسم' : 'Name',
-    notes: isRTL ? 'تعليمات خاصة بالعنوان (اختياري)' : 'Address Specific Instructions (Optional)',
-    notesPlaceholder: isRTL ? 'مثال: يرجى طرق الباب بدلاً من الجرس' : 'E.g. Please knock the door instead of pressing the doorbell',
-    req: isRTL ? 'هذا الحقل مطلوب' : 'This field is required',
-    invEmail: isRTL ? 'بريد إلكتروني غير صحيح' : 'Invalid email address',
-    confirmLoc: isRTL ? 'تأكيد الموقع في الخريطة أولاً' : 'Please confirm location on map first',
-    saving: isRTL ? 'جاري الحفظ...' : 'Saving...',
+  // --- Search Logic ---
+  const filteredGovs = useMemo(() => {
+    if (!govSearch) return LOCATIONS;
+    const lower = govSearch.toLowerCase();
+    return LOCATIONS.filter(l => l.gov.toLowerCase().includes(lower) || l.govAr.includes(lower));
+  }, [govSearch]);
+
+  const filteredCities = useMemo(() => {
+    const selectedGovData = LOCATIONS.find(l => l.gov === form.governorate);
+    if (!selectedGovData) return [];
+    if (!citySearch) return selectedGovData.cities;
+    const lower = citySearch.toLowerCase();
+    return selectedGovData.cities.filter(c => c.toLowerCase().includes(lower));
+  }, [form.governorate, citySearch]);
+
+  // --- Handlers ---
+  const handleGovSelect = (gov: string) => {
+    setForm(prev => ({ ...prev, governorate: gov, city: '' })); // Reset city on gov change
+    setGovSearch(gov);
+    setCitySearch('');
+    setShowGovList(false);
+  };
+
+  const handleCitySelect = (city: string) => {
+    setForm(prev => ({ ...prev, city }));
+    setCitySearch(city);
+    setShowCityList(false);
   };
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
-    if (!form.label.trim()) newErrors.label = t.req;
-    if (!form.name.trim()) newErrors.name = t.req;
-    if (!form.email.trim()) {
-       newErrors.email = t.req;
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-       newErrors.email = t.invEmail;
-    }
-    if (!locationData || (locationData.lat === 0 && locationData.lng === 0)) {
-        newErrors.map = t.confirmLoc;
-    }
     
+    if (!form.location.trim()) newErrors.location = "Location is required";
+    if (!form.governorate) newErrors.governorate = "Governorate is required";
+    if (!form.city) newErrors.city = "City is required";
+    if (!form.name.trim()) newErrors.name = "Name is required";
+    
+    // Phone Validation (Egypt)
+    const phoneRegex = /^01[0125][0-9]{8}$/;
+    if (!form.phone.trim()) {
+      newErrors.phone = "Phone number is required";
+    } else if (!phoneRegex.test(form.phone.replace(/\s/g, ''))) {
+      newErrors.phone = "Invalid Egyptian phone number (e.g. 010xxxxxxxxx)";
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -87,16 +132,19 @@ export const AddressSetup: React.FC<AddressSetupProps> = ({ onClose, initialAddr
     setIsSubmitting(true);
     try {
       await addAddress({
-        label: form.label,
+        label: form.location,
+        formattedAddress: `${form.location}, ${form.city}, ${form.governorate}`,
+        governorate: form.governorate,
+        city: form.city,
         apartment: form.apartment,
-        email: form.email,
+        phone: form.phone,
         contactName: form.name,
         instructions: form.instructions,
-        formattedAddress: locationData!.formattedAddress,
-        lat: locationData!.lat,
-        lng: locationData!.lng,
-        placeId: locationData?.placeId,
-        isDefault: false // handled in logic
+        isDefault: false,
+        // Geo fields intentionally omitted/null
+        lat: undefined,
+        lng: undefined,
+        placeId: undefined
       });
       onClose();
     } catch (e) {
@@ -105,136 +153,206 @@ export const AddressSetup: React.FC<AddressSetupProps> = ({ onClose, initialAddr
     }
   };
 
-  const handleMapSelect = (loc: DeliveryLocation) => {
-     setLocationData({
-         lat: loc.lat,
-         lng: loc.lng,
-         formattedAddress: loc.address,
-         placeId: loc.placeId
-     });
-     // Auto-fill label with the map address if empty or if user hasn't heavily edited it yet
-     if (!form.label || form.label.length < 5 || form.label.includes(',')) {
-         setForm(prev => ({ ...prev, label: loc.address }));
-     }
-     // Clear map error if exists
-     if (errors.map) setErrors(prev => ({ ...prev, map: '' }));
-  };
-
   return (
-    <div className="fixed inset-0 bg-white z-[60] flex flex-col animate-slide-in">
-      {/* Title Bar */}
-      <div className="flex items-center justify-between px-4 py-4 border-b border-gray-100 bg-white shadow-sm z-20">
-        <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition text-gray-500">
-           <X size={24} />
-        </button>
-        <h1 className="text-lg font-bold text-gray-900">{t.title}</h1>
-        <button 
-            onClick={handleSubmit}
-            disabled={isSubmitting}
-            className="p-2 text-brand-600 hover:bg-brand-50 rounded-full transition font-bold disabled:opacity-50"
-        >
-           <Check size={24} />
-        </button>
-      </div>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-end md:items-center justify-center p-0 md:p-4 animate-fade-in">
+      <div className="bg-white w-full md:max-w-2xl h-[90vh] md:h-auto md:max-h-[90vh] md:rounded-3xl flex flex-col shadow-2xl animate-slide-in overflow-hidden">
+        
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white z-20">
+            <h1 className="text-xl font-bold text-gray-900">{initialAddress ? 'Edit Address' : 'New Address'}</h1>
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition text-gray-500">
+               <X size={24} />
+            </button>
+        </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto bg-gray-50">
-         {/* Map Section - Top */}
-         <div className="bg-white border-b border-gray-200 pb-4 shadow-sm">
-            <div className="h-64 w-full relative">
-               <MapPicker 
-                  onLocationSelect={handleMapSelect} 
-                  initialLocation={initialAddress}
-               />
-            </div>
-            {errors.map && (
-                <div className="px-4 pt-2 text-red-500 text-xs flex items-center gap-1">
-                    <AlertTriangle size={12} /> {errors.map}
-                </div>
-            )}
-         </div>
-
-         {/* Fields Section */}
-         <div className="p-6 space-y-5 max-w-xl mx-auto">
+        {/* Form Content */}
+        <div className="flex-1 overflow-y-auto bg-gray-50 p-4 md:p-6 space-y-6">
             
-            {/* 1. Location */}
-            <div>
-               <label className="block text-xs font-bold text-gray-500 uppercase mb-2">
-                 {t.location} <span className="text-red-500">*</span>
-               </label>
-               <input 
-                  type="text"
-                  value={form.label}
-                  onChange={e => setForm({...form, label: e.target.value})}
-                  className={`w-full p-4 rounded-xl border bg-white focus:ring-2 focus:ring-brand-500 outline-none transition ${errors.label ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-200'}`}
-                  placeholder="e.g. 123 Main St, Building 5"
-               />
-               {errors.label && <p className="text-xs text-red-500 mt-1">{errors.label}</p>}
+            {/* Section 1: Region */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4 relative z-10">
+                <div className="flex items-center gap-2 text-brand-600 mb-2">
+                    <MapPin size={18} />
+                    <h3 className="font-bold text-sm uppercase tracking-wider">Region Details</h3>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Governorate Search */}
+                    <div className="relative">
+                        <label className="block text-xs font-bold text-gray-700 mb-1">Governorate <span className="text-red-500">*</span></label>
+                        <div className="relative">
+                            <input 
+                                type="text"
+                                value={govSearch}
+                                onChange={e => { setGovSearch(e.target.value); setShowGovList(true); }}
+                                onFocus={() => setShowGovList(true)}
+                                className={`w-full p-3 rounded-xl border outline-none text-sm ${errors.governorate ? 'border-red-500' : 'border-gray-200 focus:border-brand-500'}`}
+                                placeholder="Search governorate..."
+                            />
+                            <Search className="absolute right-3 top-3.5 text-gray-400 pointer-events-none" size={16} />
+                        </div>
+                        {showGovList && (
+                            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl max-h-48 overflow-y-auto z-50">
+                                {filteredGovs.length > 0 ? filteredGovs.map(g => (
+                                    <div 
+                                        key={g.gov} 
+                                        onClick={() => handleGovSelect(g.gov)}
+                                        className="p-3 hover:bg-brand-50 cursor-pointer text-sm border-b border-gray-50 last:border-0 flex justify-between"
+                                    >
+                                        <span className="font-medium">{g.gov}</span>
+                                        <span className="text-gray-400 text-xs">{g.govAr}</span>
+                                    </div>
+                                )) : (
+                                    <div className="p-3 text-xs text-gray-400">No matches found</div>
+                                )}
+                            </div>
+                        )}
+                        {errors.governorate && <p className="text-xs text-red-500 mt-1">{errors.governorate}</p>}
+                    </div>
+
+                    {/* City Search */}
+                    <div className="relative">
+                        <label className="block text-xs font-bold text-gray-700 mb-1">City / Area <span className="text-red-500">*</span></label>
+                        <div className="relative">
+                            <input 
+                                type="text"
+                                value={citySearch}
+                                onChange={e => { setCitySearch(e.target.value); setShowCityList(true); }}
+                                onFocus={() => setShowCityList(true)}
+                                disabled={!form.governorate}
+                                className={`w-full p-3 rounded-xl border outline-none text-sm ${errors.city ? 'border-red-500' : 'border-gray-200 focus:border-brand-500'} ${!form.governorate ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                placeholder={form.governorate ? "Search area..." : "Select governorate first"}
+                            />
+                            <Search className="absolute right-3 top-3.5 text-gray-400 pointer-events-none" size={16} />
+                        </div>
+                        {showCityList && form.governorate && (
+                             <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl max-h-48 overflow-y-auto z-50">
+                                {filteredCities.length > 0 ? filteredCities.map(c => (
+                                    <div 
+                                        key={c} 
+                                        onClick={() => handleCitySelect(c)}
+                                        className="p-3 hover:bg-brand-50 cursor-pointer text-sm border-b border-gray-50 last:border-0"
+                                    >
+                                        {c}
+                                    </div>
+                                )) : (
+                                    <div className="p-3 text-xs text-gray-400">No matches found</div>
+                                )}
+                            </div>
+                        )}
+                        {errors.city && <p className="text-xs text-red-500 mt-1">{errors.city}</p>}
+                    </div>
+                </div>
             </div>
 
-            {/* 2. Apartment */}
-            <div>
-               <label className="block text-xs font-bold text-gray-500 uppercase mb-2">{t.apt}</label>
-               <input 
-                  type="text"
-                  value={form.apartment}
-                  onChange={e => setForm({...form, apartment: e.target.value})}
-                  className="w-full p-4 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-brand-500 outline-none transition"
-                  placeholder="e.g. Apt 4B"
-               />
+            {/* Section 2: Address Details */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+                <div className="flex items-center gap-2 text-brand-600 mb-2">
+                    <Building size={18} />
+                    <h3 className="font-bold text-sm uppercase tracking-wider">Building Details</h3>
+                </div>
+
+                {/* Location String */}
+                <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Address Line <span className="text-red-500">*</span></label>
+                    <input 
+                        type="text"
+                        value={form.location}
+                        onChange={e => setForm({...form, location: e.target.value})}
+                        className={`w-full p-3 rounded-xl border outline-none text-sm ${errors.location ? 'border-red-500' : 'border-gray-200 focus:ring-2 focus:ring-brand-500'}`}
+                        placeholder="e.g. Building 15, Street 9, Near Metro Market"
+                    />
+                    {errors.location && <p className="text-xs text-red-500 mt-1">{errors.location}</p>}
+                </div>
+
+                {/* Apartment */}
+                <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Apartment / Unit (Optional)</label>
+                    <div className="relative">
+                        <Home className="absolute top-3.5 left-3.5 text-gray-400" size={18} />
+                        <input 
+                            type="text"
+                            value={form.apartment}
+                            onChange={e => setForm({...form, apartment: e.target.value})}
+                            className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+                            placeholder="e.g. Apt 4, Floor 2"
+                        />
+                    </div>
+                </div>
             </div>
 
-             {/* 3. Email */}
-             <div>
-               <label className="block text-xs font-bold text-gray-500 uppercase mb-2">
-                  {t.email} <span className="text-red-500">*</span>
-               </label>
-               <input 
-                  type="email"
-                  value={form.email}
-                  onChange={e => setForm({...form, email: e.target.value})}
-                  className={`w-full p-4 rounded-xl border bg-white focus:ring-2 focus:ring-brand-500 outline-none transition ${errors.email ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-200'}`}
-               />
-               {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email}</p>}
-            </div>
+            {/* Section 3: Contact */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+                <div className="flex items-center gap-2 text-brand-600 mb-2">
+                    <User size={18} />
+                    <h3 className="font-bold text-sm uppercase tracking-wider">Contact Info</h3>
+                </div>
 
-            {/* 4. Name */}
-            <div>
-               <label className="block text-xs font-bold text-gray-500 uppercase mb-2">
-                  {t.name} <span className="text-red-500">*</span>
-               </label>
-               <input 
-                  type="text"
-                  value={form.name}
-                  onChange={e => setForm({...form, name: e.target.value})}
-                  className={`w-full p-4 rounded-xl border bg-white focus:ring-2 focus:ring-brand-500 outline-none transition ${errors.name ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-200'}`}
-               />
-               {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
-            </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Name */}
+                    <div>
+                        <label className="block text-xs font-bold text-gray-700 mb-1">Contact Name <span className="text-red-500">*</span></label>
+                        <div className="relative">
+                            <User className="absolute top-3.5 left-3.5 text-gray-400" size={18} />
+                            <input 
+                                type="text"
+                                value={form.name}
+                                onChange={e => setForm({...form, name: e.target.value})}
+                                className={`w-full pl-10 pr-4 py-3 rounded-xl border outline-none text-sm ${errors.name ? 'border-red-500' : 'border-gray-200 focus:ring-2 focus:ring-brand-500'}`}
+                            />
+                        </div>
+                         {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
+                    </div>
 
-            {/* 5. Instructions */}
-            <div>
-               <label className="block text-xs font-bold text-gray-500 uppercase mb-2">{t.notes}</label>
-               <textarea 
-                  rows={3}
-                  value={form.instructions}
-                  onChange={e => setForm({...form, instructions: e.target.value})}
-                  className="w-full p-4 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-brand-500 outline-none transition resize-none"
-                  placeholder={t.notesPlaceholder}
-               />
+                    {/* Phone */}
+                    <div>
+                        <label className="block text-xs font-bold text-gray-700 mb-1">Phone Number <span className="text-red-500">*</span></label>
+                        <div className="relative">
+                            <Smartphone className="absolute top-3.5 left-3.5 text-gray-400" size={18} />
+                            <input 
+                                type="tel"
+                                value={form.phone}
+                                onChange={e => setForm({...form, phone: e.target.value})}
+                                className={`w-full pl-10 pr-4 py-3 rounded-xl border outline-none text-sm ${errors.phone ? 'border-red-500' : 'border-gray-200 focus:ring-2 focus:ring-brand-500'}`}
+                                placeholder="01xxxxxxxxx"
+                            />
+                        </div>
+                        {errors.phone && <p className="text-xs text-red-500 mt-1">{errors.phone}</p>}
+                    </div>
+                </div>
+                
+                {/* Instructions */}
+                <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Delivery Instructions</label>
+                    <div className="relative">
+                        <FileText className="absolute top-3.5 left-3.5 text-gray-400" size={18} />
+                        <textarea 
+                            rows={2}
+                            value={form.instructions}
+                            onChange={e => setForm({...form, instructions: e.target.value})}
+                            className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-brand-500 outline-none text-sm resize-none"
+                            placeholder="e.g. Leave with security"
+                        />
+                    </div>
+                </div>
             </div>
-         </div>
-      </div>
+        </div>
 
-      {/* Bottom Action Bar */}
-      <div className="p-4 bg-white border-t border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-         <button 
-            onClick={handleSubmit}
-            disabled={isSubmitting}
-            className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-brand-700 transition shadow-lg shadow-brand-200 active:scale-95 transform disabled:opacity-70 disabled:cursor-not-allowed"
-         >
-            {isSubmitting ? t.saving : t.save}
-         </button>
+        {/* Footer Actions */}
+        <div className="p-4 md:p-6 bg-white border-t border-gray-100 z-30">
+            <button 
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+                className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-brand-700 transition shadow-lg shadow-brand-200 active:scale-95 transform disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+                {isSubmitting ? (
+                    <span>Saving...</span>
+                ) : (
+                    <>
+                        <Check size={20} /> Save Address
+                    </>
+                )}
+            </button>
+        </div>
       </div>
     </div>
   );
