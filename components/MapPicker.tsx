@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { MapPin, Navigation, Search, AlertTriangle, Map as MapIcon, X } from 'lucide-react';
+import { Search, AlertTriangle, Map as MapIcon, X } from 'lucide-react';
 import { DeliveryLocation } from '../types';
 import { GOOGLE_MAPS_API_KEY, STORE_LOCATION } from '../constants';
 
@@ -22,51 +22,40 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
   const inputRef = useRef<HTMLInputElement>(null);
   const googleMapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
-  const autocompleteRef = useRef<any>(null);
   
   // State to handle map vs manual mode
   const [manualMode, setManualMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [addressText, setAddressText] = useState(initialLocation?.address || '');
   const [mapReady, setMapReady] = useState(false);
 
   // Effect to handle Global Auth Failure (Billing/API Activation errors)
   useEffect(() => {
-    // Define global error handler for Google Maps
     window.gm_authFailure = () => {
-      console.error("Google Maps Authentication Failure (Billing or API Key issue)");
-      // Force manual mode immediately
+      console.error("Google Maps Authentication Failure");
       setManualMode(true);
-      setError('Map service unavailable (Billing/API Key error). Please enter address manually.');
+      setError('Map service unavailable. Please enter address manually.');
       setMapReady(false);
     };
     
-    // Check for missing API key immediately
     if (!GOOGLE_MAPS_API_KEY) {
       setError('Map configuration missing. Switching to manual entry.');
       setManualMode(true);
     }
-
-    return () => {
-      // window.gm_authFailure = () => {}; // Don't clear immediately to catch late errors
-    };
   }, []);
 
   // Effect to load Google Maps Script
   useEffect(() => {
-    let loadTimeout: ReturnType<typeof setTimeout>;
-
     if (manualMode) return;
 
+    let loadTimeout: ReturnType<typeof setTimeout>;
+
     const loadGoogleMaps = () => {
-      // 1. Check if Google Maps is already loaded
       if (window.google && window.google.maps) {
         initMap();
         return;
       }
 
-      // 2. Check if script is already in DOM (prevent duplicates)
       const existingScript = document.getElementById('google-maps-script');
       if (existingScript) {
          const checkGoogle = setInterval(() => {
@@ -75,20 +64,9 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
                initMap();
             }
          }, 500);
-         
-         // Safety timeout for existing script
-         loadTimeout = setTimeout(() => {
-             clearInterval(checkGoogle);
-             if (!mapReady && !manualMode && !window.google) {
-                 console.warn("Map loading timed out (existing script).");
-                 setManualMode(true);
-                 setError('Map loading timed out. Switched to manual entry.');
-             }
-         }, 5000); // Reduced timeout for faster fallback
          return;
       }
 
-      // 3. Load the script dynamically
       const script = document.createElement('script');
       script.id = 'google-maps-script';
       script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,geometry&callback=initMapCallback`;
@@ -106,17 +84,6 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
       };
       
       document.body.appendChild(script);
-
-      // 4. Safety timeout for script loading
-      loadTimeout = setTimeout(() => {
-        if (!window.google || !window.google.maps) {
-             console.warn("Map load timeout");
-             if (!manualMode) {
-               setManualMode(true);
-               setError('Map services unavailable. Switching to manual mode.');
-             }
-        }
-      }, 5000); // Reduced timeout for faster fallback
     };
 
     loadGoogleMaps();
@@ -126,6 +93,37 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
     };
   }, [manualMode]);
 
+  // Create the "Use My Location" control button to add to the map
+  const createLocationControl = (map: any) => {
+    const controlDiv = document.createElement('div');
+    controlDiv.style.margin = '10px';
+    // Fix: Type assertion for index property used by Google Maps controls
+    (controlDiv as any).index = 1;
+
+    const controlUI = document.createElement('div');
+    controlUI.style.backgroundColor = '#fff';
+    controlUI.style.border = '2px solid #fff';
+    controlUI.style.borderRadius = '3px';
+    controlUI.style.boxShadow = '0 2px 6px rgba(0,0,0,.3)';
+    controlUI.style.cursor = 'pointer';
+    controlUI.style.width = '40px';
+    controlUI.style.height = '40px';
+    controlUI.style.display = 'flex';
+    controlUI.style.alignItems = 'center';
+    controlUI.style.justifyContent = 'center';
+    controlUI.title = 'Your Location';
+    controlDiv.appendChild(controlUI);
+
+    // Standard geolocation icon
+    controlUI.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="#666"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>`;
+
+    controlUI.addEventListener('click', () => {
+       handleCurrentLocation(map);
+    });
+
+    return controlDiv;
+  };
+
   const initMap = () => {
     if (manualMode) return;
     if (!mapRef.current || !window.google || !window.google.maps) return;
@@ -133,7 +131,7 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
     try {
         const defaultPos = initialLocation && initialLocation.lat !== 0
         ? { lat: initialLocation.lat, lng: initialLocation.lng } 
-        : { lat: 30.0444, lng: 31.2357 }; // Default to Cairo
+        : { lat: 30.0444, lng: 31.2357 };
 
         const map = new window.google.maps.Map(mapRef.current, {
             center: defaultPos,
@@ -141,11 +139,15 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
             mapTypeControl: false,
             streetViewControl: false,
             fullscreenControl: false,
-            clickableIcons: false,
+            clickableIcons: false, // Prevent POI clicks interfering
         });
 
         googleMapRef.current = map;
-        setMapReady(true); // Assume ready if no crash
+        setMapReady(true);
+
+        // Add custom Location Control (replaces FAB)
+        const locationControl = createLocationControl(map);
+        map.controls[window.google.maps.ControlPosition.RIGHT_BOTTOM].push(locationControl);
 
         const marker = new window.google.maps.Marker({
             position: defaultPos,
@@ -156,7 +158,7 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
 
         markerRef.current = marker;
 
-        // Initialize Autocomplete if input ref exists
+        // Initialize Autocomplete
         if (inputRef.current) {
             try {
                 const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
@@ -164,12 +166,12 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
                 });
                 
                 autocomplete.bindTo('bounds', map);
-                autocompleteRef.current = autocomplete;
 
                 autocomplete.addListener('place_changed', () => {
                     const place = autocomplete.getPlace();
 
                     if (!place.geometry || !place.geometry.location) {
+                        // If no geometry (e.g. manual text entered), fallback to text
                         setAddressText(inputRef.current?.value || '');
                         return;
                     }
@@ -186,19 +188,20 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
                 });
             } catch (e) {
                 console.warn("Places API initialization failed:", e);
-                // This often fails if Places API is not enabled. We just don't get autocomplete.
             }
         }
 
-        marker.addListener('dragend', () => {
-            const pos = marker.getPosition();
-            map.panTo(pos);
-            geocodePosition(pos);
-        });
-
+        // Map Click to Place
         map.addListener('click', (e: any) => {
             const pos = e.latLng;
             marker.setPosition(pos);
+            map.panTo(pos); // Center on click
+            geocodePosition(pos);
+        });
+
+        // Marker Drag End
+        marker.addListener('dragend', () => {
+            const pos = marker.getPosition();
             map.panTo(pos);
             geocodePosition(pos);
         });
@@ -206,7 +209,7 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
     } catch (err) {
         console.error("Error initializing map:", err);
         setManualMode(true);
-        setError("Map initialization error (Check console). Switched to manual.");
+        setError("Map initialization error. Switched to manual.");
     }
   };
 
@@ -218,11 +221,9 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
         if (status === 'OK' && results[0]) {
             updateLocation(pos, results[0].formatted_address, results[0].place_id);
         } else {
-             // If Geocoding API is not enabled, this will fail. We fallback gracefully.
              console.warn("Geocoding failed:", status);
              if (status === 'REQUEST_DENIED' || status === 'OVER_QUERY_LIMIT') {
-                 // Likely API key issue
-                 setError("Map services restricted. Please enter address details below.");
+                 setError("Map services restricted. Address may not update automatically.");
              }
         }
         });
@@ -236,6 +237,9 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
     const lng = typeof pos.lng === 'function' ? pos.lng() : pos.lng;
     
     setAddressText(address);
+    if (inputRef.current) {
+        inputRef.current.value = address;
+    }
     
     calculateDistance(lat, lng, (distanceKm, duration) => {
       onLocationSelect({
@@ -250,7 +254,6 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
   };
 
   const calculateDistance = (lat: number, lng: number, callback: (dist: number, dur: string) => void) => {
-    // Check if maps API is available
     if (!window.google || !window.google.maps || !window.google.maps.DistanceMatrixService) {
         callback(0, 'Standard Delivery');
         return;
@@ -270,50 +273,51 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
                 const distanceValue = element.distance.value / 1000; // km
                 callback(distanceValue, element.duration.text);
             } else {
-                console.warn("Distance Matrix failed or no route:", status);
                 callback(0, 'Standard Delivery');
             }
         }
         );
     } catch (e) {
-        console.error("Distance matrix failed", e);
         callback(0, 'Standard Delivery');
     }
   };
 
-  const handleCurrentLocation = () => {
+  const handleCurrentLocation = (mapInstance?: any) => {
     if (navigator.geolocation) {
-      setLoading(true);
+      // Show loading cursor
+      if (mapRef.current) mapRef.current.style.cursor = 'wait';
+      
       navigator.geolocation.getCurrentPosition(
         (position) => {
+           if (mapRef.current) mapRef.current.style.cursor = '';
+           
           const pos = {
             lat: position.coords.latitude,
             lng: position.coords.longitude,
           };
 
-          if (googleMapRef.current && markerRef.current) {
-            googleMapRef.current.setCenter(pos);
-            googleMapRef.current.setZoom(17);
+          const map = mapInstance || googleMapRef.current;
+          if (map && markerRef.current) {
+            map.setCenter(pos);
+            map.setZoom(17);
             markerRef.current.setPosition(pos);
             geocodePosition(pos);
           }
-          setLoading(false);
         },
         (error) => {
+          if (mapRef.current) mapRef.current.style.cursor = '';
           console.warn("Geolocation failed", error);
-          setError('Geolocation failed. Please pick location manually.');
-          setLoading(false);
+          alert("Could not get current location. Please ensure permissions are allowed.");
         }
       );
     } else {
-      setError('Browser does not support geolocation.');
+      alert("Browser does not support geolocation.");
     }
   };
 
   const handleManualChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setAddressText(val);
-    // When typing manually, we don't have coordinates yet.
     onLocationSelect({
         address: val,
         lat: 0,
@@ -402,25 +406,12 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
                  </div>
             </div>
         )}
-
-        {mapReady && (
-            <div className="absolute bottom-4 right-4 flex flex-col gap-2">
-                <button
-                    type="button"
-                    onClick={handleCurrentLocation}
-                    className="bg-white text-brand-600 p-3 rounded-full shadow-lg hover:bg-brand-50 transition flex items-center justify-center group z-20"
-                    title="Use current location"
-                >
-                    <Navigation size={20} className={`group-hover:scale-110 transition ${loading ? 'animate-spin' : ''}`} />
-                </button>
-            </div>
-        )}
       </div>
       
       <div className="flex justify-between items-center px-1">
          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <MapPin size={12} />
-            <span>Drag pin to confirm.</span>
+            <MapIcon size={12} />
+            <span>Click or drag pin to set location.</span>
          </div>
          <button 
             type="button"

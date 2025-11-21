@@ -17,7 +17,7 @@ interface StoreContextType {
   changeLanguage: (lang: 'en' | 'ar') => void;
   
   // Address Management
-  addAddress: (address: Omit<Address, 'id'>) => void;
+  addAddress: (address: Omit<Address, 'id'>) => Promise<void>;
   deleteAddress: (id: string) => void;
   
   // Products
@@ -261,19 +261,42 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     updateUser({ language: lang });
   };
 
-  const addAddress = (addressData: Omit<Address, 'id'>) => {
+  const addAddress = async (addressData: Omit<Address, 'id'>) => {
     if (!user) return;
+    
+    // Simulate API Delay
+    await new Promise(resolve => setTimeout(resolve, 800));
+
     const newAddress: Address = {
       ...addressData,
       id: Date.now().toString()
     };
+
+    // Backend Payload Construction (Exact Match to Specs)
+    const apiPayload = {
+      label: newAddress.label,
+      apartment: newAddress.apartment,
+      email: newAddress.email,
+      name: newAddress.contactName,
+      notes: newAddress.instructions, // "Address Specific Instructions"
+      formatted_address: newAddress.formattedAddress,
+      place_id: newAddress.placeId,
+      latitude: newAddress.lat,
+      longitude: newAddress.lng
+    };
+    
+    // Log for verification
+    console.log("POST /api/user/addresses", JSON.stringify(apiPayload, null, 2));
+
     const updatedAddresses = [...user.addresses, newAddress];
     updateUser({ addresses: updatedAddresses });
-    addNotification('Address added', 'success');
+    addNotification('Address saved successfully!', 'success');
   };
 
   const deleteAddress = (id: string) => {
     if (!user) return;
+    // Simulate Delete API
+    console.log(`DELETE /api/user/addresses/${id}`);
     updateUser({ addresses: user.addresses.filter(a => a.id !== id) });
     addNotification('Address removed', 'info');
   };

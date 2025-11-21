@@ -1,4 +1,5 @@
 
+
 export interface Product {
   id: string;
   name: string;
@@ -37,16 +38,23 @@ export interface CartItem extends Product {
   quantity: number;
   selectedColor?: string;
   customizationNote?: string;
-  costPrice?: number; // Snapshot of cost at time of purchase
+  costPrice?: number;
 }
 
 export interface Address {
   id: string;
-  label: string; // e.g., "Home", "Office"
+  // Fields from Address Setup Spec
+  label: string; // Used for "Location" input (e.g. building name, street #)
+  apartment?: string; 
+  email: string;
+  contactName: string;
+  instructions?: string; // Address Specific Instructions
+  
+  // Geo fields
   formattedAddress: string;
   lat: number;
   lng: number;
-  details?: string; // Floor, Apt, etc.
+  placeId?: string;
   isDefault: boolean;
 }
 
@@ -66,7 +74,7 @@ export interface Order {
   items: CartItem[];
   total: number;
   status: 'Processing' | 'Out for Delivery' | 'Delivered' | 'Cancelled';
-  address: string; // Kept for backward compatibility/display
+  address: string;
   deliveryLocation?: DeliveryLocation;
   paymentMethod: PaymentMethod;
   customerName: string;
@@ -82,7 +90,7 @@ export interface User {
   isAdmin: boolean;
   addresses: Address[];
   birthday?: string;
-  avatar?: string; // Base64 or URL
+  avatar?: string; // Base64 Data URI
   language: 'en' | 'ar';
   notificationsEnabled: boolean;
   country: string;

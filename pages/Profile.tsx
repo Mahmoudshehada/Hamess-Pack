@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
 import { 
@@ -6,7 +7,7 @@ import {
   ChevronRight, X, Save, Calendar, Mail, Lock, Globe, Bell, 
   Plus, Trash2, Shield, Camera, Home, Map, ChevronLeft, Heart
 } from 'lucide-react';
-import { MapPicker } from '../components/MapPicker';
+import { AddressSetup } from '../components/AddressSetup';
 import { DeliveryLocation } from '../types';
 
 interface ProfileProps {
@@ -17,7 +18,7 @@ interface ProfileProps {
 type SettingsView = 'overview' | 'edit-profile' | 'addresses' | 'add-address' | 'security' | 'general';
 
 export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
-  const { user, orders, updateUser, changeLanguage, uploadUserAvatar, addAddress, deleteAddress } = useStore();
+  const { user, orders, updateUser, changeLanguage, uploadUserAvatar, deleteAddress } = useStore();
   const [currentView, setCurrentView] = useState<SettingsView>('overview');
   
   // Form States
@@ -38,7 +39,6 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
 
   // Other temporary states
   const [emailStep, setEmailStep] = useState<'request' | 'verify'>('request');
-  const [newAddressLabel, setNewAddressLabel] = useState('Home');
 
   if (!user) return null;
 
@@ -71,17 +71,6 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
     if (e.target.files && e.target.files[0]) {
        await uploadUserAvatar(e.target.files[0]);
     }
-  };
-
-  const handleAddressAdd = (loc: DeliveryLocation) => {
-    addAddress({
-      label: newAddressLabel,
-      formattedAddress: loc.address,
-      lat: loc.lat,
-      lng: loc.lng,
-      isDefault: user.addresses.length === 0
-    });
-    setCurrentView('addresses');
   };
 
   // --- Translations ---
@@ -231,8 +220,8 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
         <div className="flex items-center gap-3">
           <button onClick={() => setCurrentView('overview')} className="p-2 hover:bg-gray-100 rounded-full transition">
              <ChevronLeft size={24} className={isRTL ? 'rotate-180' : ''} />
-          </button>
-          <h2 className="text-xl font-bold">{t.addresses}</h2>
+        </button>
+        <h2 className="text-xl font-bold">{t.addresses}</h2>
         </div>
         <button onClick={() => setCurrentView('add-address')} className="text-brand-600 text-sm font-bold flex items-center gap-1 hover:bg-brand-50 px-3 py-1 rounded-lg transition">
            <Plus size={16} /> {isRTL ? 'إضافة' : 'Add New'}
@@ -253,6 +242,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
                  <div>
                     <h4 className="font-bold text-gray-900">{addr.label} {addr.isDefault && <span className="text-[10px] bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full ml-2">{t.default}</span>}</h4>
                     <p className="text-sm text-gray-500 mt-1 leading-snug">{addr.formattedAddress}</p>
+                    <p className="text-xs text-gray-400 mt-1">{addr.contactName} • {addr.email}</p>
                  </div>
               </div>
               <button onClick={() => deleteAddress(addr.id)} className="text-gray-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition">
@@ -260,32 +250,6 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
               </button>
            </div>
          ))}
-      </div>
-    </div>
-  );
-
-  const AddAddressView = () => (
-    <div className="animate-slide-in h-full flex flex-col">
-      <div className="flex items-center gap-3 mb-4">
-        <button onClick={() => setCurrentView('addresses')} className="p-2 hover:bg-gray-100 rounded-full transition">
-           <ChevronLeft size={24} className={isRTL ? 'rotate-180' : ''} />
-        </button>
-        <h2 className="text-xl font-bold">{t.addNewAddress}</h2>
-      </div>
-      
-      <div className="mb-4">
-         <label className="block text-xs font-bold text-gray-500 uppercase mb-2">{t.addressLabel}</label>
-         <div className="flex gap-2">
-            {['Home', 'Work', 'Other'].map(l => (
-               <button key={l} onClick={() => setNewAddressLabel(l)} className={`px-4 py-2 rounded-lg text-sm font-medium border transition ${newAddressLabel === l ? 'bg-brand-600 text-white border-brand-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                 {l}
-               </button>
-            ))}
-         </div>
-      </div>
-
-      <div className="flex-1 bg-gray-100 rounded-2xl overflow-hidden relative border border-gray-200 shadow-inner">
-         <MapPicker onLocationSelect={handleAddressAdd} />
       </div>
     </div>
   );
@@ -517,11 +481,15 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 w-full md:pb-12 relative">
+      {/* Address Setup Modal / Overlay */}
+      {currentView === 'add-address' && (
+         <AddressSetup onClose={() => setCurrentView('addresses')} />
+      )}
+
       <div className="max-w-3xl mx-auto bg-white min-h-screen md:min-h-0 md:mt-6 md:rounded-3xl md:shadow-sm md:border border-gray-100 overflow-hidden flex flex-col">
          {currentView === 'overview' && <Overview />}
          {currentView === 'edit-profile' && <EditProfileView />}
          {currentView === 'addresses' && <AddressesView />}
-         {currentView === 'add-address' && <AddAddressView />}
          {currentView === 'security' && <SecurityView />}
          {currentView === 'general' && <GeneralSettingsView />}
       </div>
