@@ -1,7 +1,9 @@
 
+
 import React, { createContext, useContext, useState, ReactNode, useMemo, useEffect, useCallback } from 'react';
-import { CartItem, Product, Order, User, Coupon, AppSettings, PaymentMethod, Category, StoredImage, DeliveryLocation, Address } from '../types';
+import { CartItem, Product, Order, User, Coupon, AppSettings, PaymentMethod, Category, StoredImage, DeliveryLocation, Address, NotificationLog } from '../types';
 import { MOCK_PRODUCTS as INITIAL_PRODUCTS } from '../constants';
+import * as db from '../utils/storage';
 
 export interface Notification {
   id: string;
@@ -10,6 +12,7 @@ export interface Notification {
 }
 
 interface StoreContextType {
+  isLoading: boolean;
   user: User | null;
   login: (phone: string, name?: string, email?: string) => void;
   logout: () => void;
@@ -22,10 +25,10 @@ interface StoreContextType {
   
   // Products
   products: Product[];
-  addProduct: (product: Product) => void;
-  updateProduct: (product: Product) => void;
-  deleteProduct: (id: string) => void;
-  bulkUpdatePrices: (percentage: number, category?: string) => void;
+  addProduct: (product: Product) => Promise<void>;
+  updateProduct: (product: Product) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
+  bulkUpdatePrices: (percentage: number, category?: string) => Promise<void>;
   
   // Image Handling
   uploadProductImage: (file: File, productId: string) => Promise<StoredImage>;
@@ -49,29 +52,20 @@ interface StoreContextType {
   deleteCoupon: (id: string) => void;
   settings: AppSettings;
   updateSettings: (settings: AppSettings) => void;
+  notificationLogs: NotificationLog[];
+  sendTestNotification: () => void;
   
   // System
   notifications: Notification[];
   addNotification: (message: string, type: 'success' | 'info' | 'error') => void;
   removeNotification: (id: string) => void;
+  resetSystem: () => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
-// Helper to safely load from localStorage
-const loadState = <T,>(key: string, fallback: T): T => {
-  if (typeof window === 'undefined') return fallback;
-  try {
-    const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : fallback;
-  } catch (e) {
-    console.warn(`Failed to load state for ${key}`, e);
-    return fallback;
-  }
-};
-
-// Image Compression Utility (800x800, 0.8 Quality)
-const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.8): Promise<string> => {
+// Helper: Image Compression
+const compressImage = (file: File, maxWidth = 600, maxHeight = 600, quality = 0.7): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -100,7 +94,6 @@ const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.
         const ctx = canvas.getContext('2d');
         if (ctx) {
             ctx.drawImage(img, 0, 0, width, height);
-            // Compress to JPEG with 80% quality
             resolve(canvas.toDataURL('image/jpeg', quality)); 
         } else {
             resolve(event.target?.result as string);
@@ -112,8 +105,49 @@ const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.
   });
 };
 
+// Helper: Sanitize Product for Storage (Strip Base64)
+const sanitizeProductForStorage = (product: Product): Product => {
+  const p = { ...product };
+  if (p.image && typeof p.image === 'string' && p.image.startsWith('data:')) {
+     if (p.imagePath) {
+         p.image = p.imagePath; 
+     } else {
+         p.image = p.imageId ? `/uploads/products/${p.imageId}.jpg` : 'https://via.placeholder.com/400?text=No+Image'; 
+     }
+  }
+  return p;
+};
+
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [isLoading, setIsLoading] = useState(true);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  // --- State Definitions ---
+  const [user, setUser] = useState<User | null>(null);
+  const [rawProducts, setRawProducts] = useState<Product[]>([]);
+  const [storedImages, setStoredImages] = useState<StoredImage[]>([]);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
+  
+  const [settings, setSettings] = useState<AppSettings>({
+      brandColor: '#512D6D',
+      currency: 'EGP',
+      paymentGateways: { paymob: true, fawry: true, stripe: false },
+      shipping: { flatRate: 50, freeShippingThreshold: 1000 },
+      notifications: {
+        enableWhatsApp: true,
+        enablePush: true,
+        enableEmailDigest: false,
+        orderAmountThreshold: 0,
+        admins: [
+          { name: 'Walid El Sheikh', phone: '+201066665153', language: 'ar', channels: ['WHATSAPP', 'IN_APP'] },
+          { name: 'Mahmoud Shehada', phone: '+201010340487', language: 'en', channels: ['WHATSAPP', 'IN_APP'] }
+        ]
+      }
+  });
 
   const addNotification = useCallback((message: string, type: 'success' | 'info' | 'error') => {
     const id = Date.now().toString();
@@ -125,98 +159,101 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
-  // Safe Save Helper to handle QuotaExceededError
-  const saveState = useCallback((key: string, value: any) => {
-    try {
-      const serialized = JSON.stringify(value);
-      localStorage.setItem(key, serialized);
-    } catch (e) {
-      console.error(`Failed to save ${key}`, e);
-      // Check for quota exceeded errors
-      if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
-         addNotification(`Storage Limit Reached! Failed to save ${key === 'hp_images' ? 'Images' : 'Data'}. Some data might be lost.`, 'error');
-      }
-    }
-  }, [addNotification]);
-
-  // Initialize state
-  const [user, setUser] = useState<User | null>(() => loadState('hp_user', null));
-  
-  const [rawProducts, setRawProducts] = useState<Product[]>(() => 
-    loadState('hp_products', INITIAL_PRODUCTS)
-  );
-  
-  const [storedImages, setStoredImages] = useState<StoredImage[]>(() => 
-    loadState('hp_images', [])
-  );
-  
-  const [cart, setCart] = useState<CartItem[]>(() => 
-    loadState('hp_cart', [])
-  );
-  
-  const [orders, setOrders] = useState<Order[]>(() => 
-    loadState('hp_orders', [])
-  );
-  
-  const [users, setUsers] = useState<User[]>(() => 
-    loadState('hp_users', [
-      { 
-        id: '1', 
-        name: 'Walid El Sheikh', 
-        phone: '01066665153', 
-        email: 'walidelsheikh011111@gmail.com', 
-        isAdmin: true, 
-        password: '$2b$10$ExampleHashForWalid666', // Simulating bcrypt hash
-        addresses: [], language: 'en', notificationsEnabled: true, country: 'Egypt', birthday: ''
-      },
-      { 
-        id: '2', 
-        name: 'Mahmoud Shehada', 
-        phone: '01010340487', 
-        email: 'msbas999@gmail.com', 
-        isAdmin: true, 
-        password: '$2b$10$ExampleHashForMahmoud77', // Simulating bcrypt hash
-        addresses: [], language: 'en', notificationsEnabled: true, country: 'Egypt', birthday: ''
-      }
-    ])
-  );
-
-  const [coupons, setCoupons] = useState<Coupon[]>(() => 
-    loadState('hp_coupons', [])
-  );
-  
-  const [settings, setSettings] = useState<AppSettings>(() => 
-    loadState('hp_settings', {
-      brandColor: '#512D6D',
-      currency: 'EGP',
-      paymentGateways: { paymob: true, fawry: true, stripe: false },
-      shipping: { flatRate: 50, freeShippingThreshold: 1000 }
-    })
-  );
-
-  // Persistence Effects
-  useEffect(() => { saveState('hp_user', user); }, [user, saveState]);
-  useEffect(() => { saveState('hp_products', rawProducts); }, [rawProducts, saveState]);
-  useEffect(() => { saveState('hp_images', storedImages); }, [storedImages, saveState]);
-  useEffect(() => { saveState('hp_cart', cart); }, [cart, saveState]);
-  useEffect(() => { saveState('hp_orders', orders); }, [orders, saveState]);
-  useEffect(() => { saveState('hp_users', users); }, [users, saveState]);
-  useEffect(() => { saveState('hp_coupons', coupons); }, [coupons, saveState]);
-  useEffect(() => { saveState('hp_settings', settings); }, [settings, saveState]);
-
-  // Language & Brand Effect
+  // --- Initialization (IndexedDB Load) ---
   useEffect(() => {
-    document.documentElement.style.setProperty('--color-brand-600', settings.brandColor);
-    // Apply Language / RTL
-    if (user?.language) {
-      document.documentElement.lang = user.language;
-      document.documentElement.dir = user.language === 'ar' ? 'rtl' : 'ltr';
-    } else {
-      document.documentElement.dir = 'ltr';
-    }
-  }, [settings.brandColor, user?.language]);
+    const loadData = async () => {
+      try {
+        const isInitialized = await db.getGlobal<boolean>('app_initialized', false);
 
-  // --- User Logic ---
+        const dbProducts = await db.getAll<Product>('products');
+        if (!isInitialized && dbProducts.length === 0 && INITIAL_PRODUCTS.length > 0) {
+             await db.bulkPut('products', INITIAL_PRODUCTS);
+             setRawProducts(INITIAL_PRODUCTS);
+             await db.setGlobal('app_initialized', true);
+        } else {
+             setRawProducts(dbProducts);
+             if (!isInitialized) await db.setGlobal('app_initialized', true);
+        }
+
+        const dbImages = await db.getAll<StoredImage>('images');
+        setStoredImages(dbImages);
+
+        const dbOrders = await db.getAll<Order>('orders');
+        setOrders(dbOrders.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+
+        const dbCoupons = await db.getAll<Coupon>('coupons');
+        setCoupons(dbCoupons);
+        
+        const dbLogs = await db.getAll<NotificationLog>('notification_logs');
+        setNotificationLogs(dbLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+
+        const loadedUser = await db.getGlobal<User | null>('hp_user', null);
+        setUser(loadedUser);
+
+        const loadedSettings = await db.getGlobal<AppSettings>('hp_settings', settings);
+        // Ensure deep merge of notifications settings in case of new schema
+        setSettings(prev => ({ 
+            ...prev, 
+            ...loadedSettings,
+            notifications: { ...prev.notifications, ...loadedSettings.notifications }
+        }));
+
+        const loadedCart = await db.getGlobal<CartItem[]>('hp_cart', []);
+        setCart(loadedCart);
+        
+        const loadedUsers = await db.getGlobal<User[]>('hp_users', [
+          { 
+            id: '1', name: 'Walid El Sheikh', phone: '01066665153', email: 'walidelsheikh011111@gmail.com', 
+            isAdmin: true, password: '$2b$10$ExampleHashForWalid666', addresses: [], language: 'en', 
+            notificationsEnabled: true, country: 'Egypt', birthday: ''
+          },
+          { 
+            id: '2', name: 'Mahmoud Shehada', phone: '01010340487', email: 'msbas999@gmail.com', 
+            isAdmin: true, password: '$2b$10$ExampleHashForMahmoud77', addresses: [], language: 'en', 
+            notificationsEnabled: true, country: 'Egypt', birthday: ''
+          }
+        ]);
+        setUsers(loadedUsers);
+
+      } catch (error) {
+        console.error("Database Load Failed:", error);
+        addNotification("Failed to load data from database.", "error");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  // --- Sync Globals on Change ---
+  useEffect(() => { if(!isLoading) db.setGlobal('hp_user', user); }, [user, isLoading]);
+  useEffect(() => { if(!isLoading) db.setGlobal('hp_cart', cart); }, [cart, isLoading]);
+  useEffect(() => { if(!isLoading) db.setGlobal('hp_settings', settings); }, [settings, isLoading]);
+  useEffect(() => { if(!isLoading) db.setGlobal('hp_users', users); }, [users, isLoading]);
+
+  // --- Actions ---
+
+  const resetSystem = async () => {
+    try {
+      await db.clearStore('products');
+      await db.clearStore('images');
+      await db.clearStore('orders');
+      await db.clearStore('notification_logs');
+      
+      setRawProducts([]);
+      setStoredImages([]);
+      setOrders([]);
+      setNotificationLogs([]);
+      
+      addNotification('System Reset Complete. Database Cleared.', 'success');
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (e) {
+      console.error("Reset failed", e);
+      addNotification('Reset failed.', 'error');
+    }
+  };
+
   const login = (phone: string, name?: string, email?: string) => {
     const existingUser = users.find(u => u.phone === phone);
     if (existingUser) {
@@ -225,15 +262,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     } else if (name && email) {
       const newUser: User = {
         id: Date.now().toString(),
-        name,
-        email,
-        phone,
-        isAdmin: false,
-        addresses: [],
-        language: 'en',
-        notificationsEnabled: true,
-        country: 'Egypt',
-        birthday: ''
+        name, email, phone,
+        isAdmin: false, addresses: [], language: 'en',
+        notificationsEnabled: true, country: 'Egypt', birthday: ''
       };
       setUsers(prev => [...prev, newUser]);
       setUser(newUser);
@@ -249,20 +280,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const toggleUserAdmin = (id: string) => {
-    setUsers(users.map(u => u.id === id ? { ...u, isAdmin: !u.isAdmin } : u));
+    setUsers(prev => prev.map(u => u.id === id ? { ...u, isAdmin: !u.isAdmin } : u));
     addNotification('User role updated', 'success');
   };
 
   const updateUser = (updates: Partial<User>) => {
     if (!user) return;
     const updatedUser = { ...user, ...updates };
-    
-    // Update current session user
     setUser(updatedUser);
-    
-    // Update persistent users list
     setUsers(prevUsers => prevUsers.map(u => u.id === user.id ? updatedUser : u));
-    
     addNotification('Profile updated successfully', 'success');
   };
 
@@ -271,40 +297,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     updateUser({ language: lang });
   };
 
+  // Address
   const addAddress = async (addressData: Omit<Address, 'id'>) => {
     if (!user) return;
-    
-    // Simulate API Delay
-    await new Promise(resolve => setTimeout(resolve, 800));
-
     const newAddress: Address = {
       ...addressData,
       id: Date.now().toString(),
-      // Ensure legacy geo fields are handled if missing (now default to empty/null safe)
       formattedAddress: addressData.formattedAddress || `${addressData.label}, ${addressData.city}, ${addressData.governorate}`,
       lat: addressData.lat || 0,
       lng: addressData.lng || 0,
     };
-
-    // Backend Payload Construction (Manual Only)
-    const apiPayload = {
-      userId: user.id,
-      formatted_address: newAddress.formattedAddress,
-      governorate: newAddress.governorate,
-      city: newAddress.city,
-      apartment: newAddress.apartment || null,
-      phone: newAddress.phone, // New Field
-      name: newAddress.contactName,
-      notes: newAddress.instructions || null,
-      // Geo fields null/optional
-      place_id: null,
-      latitude: null,
-      longitude: null
-    };
-    
-    // Log for verification
-    console.log("POST /api/user/addresses", JSON.stringify(apiPayload, null, 2));
-
     const updatedAddresses = [...user.addresses, newAddress];
     updateUser({ addresses: updatedAddresses });
     addNotification('Address saved successfully!', 'success');
@@ -312,8 +314,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const deleteAddress = (id: string) => {
     if (!user) return;
-    // Simulate Delete API
-    console.log(`DELETE /api/user/addresses/${id}`);
     updateUser({ addresses: user.addresses.filter(a => a.id !== id) });
     addNotification('Address removed', 'info');
   };
@@ -321,11 +321,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // --- Image Logic ---
   const uploadProductImage = async (file: File, productId: string): Promise<StoredImage> => {
     try {
-      if (file.size > 15 * 1024 * 1024) throw new Error("File too large.");
-      
-      // Aggressive compression: max 800x800, 80% quality
-      const base64Data = await compressImage(file, 800, 800, 0.8);
-      
+      const base64Data = await compressImage(file, 800, 800, 0.7);
       const ext = file.name.split('.').pop() || 'jpg';
       const timestamp = Date.now();
       
@@ -339,6 +335,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         status: 'active'
       };
 
+      await db.putItem('images', newImage);
       setStoredImages(prev => [...prev, newImage]);
       return newImage;
     } catch (error) {
@@ -350,8 +347,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const uploadUserAvatar = async (file: File): Promise<string> => {
      try {
-       // Avatar compression: max 400x400, 80% quality
-       const base64Data = await compressImage(file, 400, 400, 0.8);
+       const base64Data = await compressImage(file, 400, 400, 0.7);
        if (user) updateUser({ avatar: base64Data });
        return base64Data;
      } catch (e) {
@@ -363,7 +359,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // --- Product Logic ---
   const products = useMemo(() => {
     return rawProducts.map(product => {
-      if (product.imageId) {
+      if (product.imageId && !product.image?.startsWith('data:')) {
         const storedImg = storedImages.find(img => img.id === product.imageId && img.status === 'active');
         if (storedImg) {
           return { ...product, image: storedImg.data };
@@ -373,31 +369,128 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
   }, [rawProducts, storedImages]);
 
-  const addProduct = (product: Product) => {
-    setRawProducts([product, ...rawProducts]);
-    addNotification('Product added', 'success');
+  const addProduct = async (product: Product) => {
+    try {
+        const cleanProduct = sanitizeProductForStorage(product);
+        await db.putItem('products', cleanProduct);
+        setRawProducts(prev => [cleanProduct, ...prev]);
+        addNotification('Product added successfully', 'success');
+    } catch (e) {
+        console.error("Add Product Error", e);
+        addNotification('Failed to save product. Storage might be full.', 'error');
+    }
   };
 
-  const updateProduct = (product: Product) => {
-    setRawProducts(rawProducts.map(p => p.id === product.id ? product : p));
-    addNotification('Product updated', 'success');
+  const updateProduct = async (product: Product) => {
+    try {
+        const cleanProduct = sanitizeProductForStorage(product);
+        await db.putItem('products', cleanProduct);
+        setRawProducts(prev => prev.map(p => p.id === product.id ? cleanProduct : p));
+        addNotification('Product updated', 'success');
+    } catch (e) {
+        addNotification('Failed to update product', 'error');
+    }
   };
 
-  const deleteProduct = (id: string) => {
-    setRawProducts(rawProducts.filter(p => p.id !== id));
-    setStoredImages(prev => prev.map(img => 
-      img.productId === id ? { ...img, status: 'pending_deletion' } : img
-    ));
-    addNotification('Product deleted', 'info');
+  const deleteProduct = async (id: string) => {
+    try {
+        await db.deleteItem('products', id);
+        setRawProducts(prev => prev.filter(p => p.id !== id));
+        setStoredImages(prev => prev.map(img => 
+          img.productId === id ? { ...img, status: 'pending_deletion' } : img
+        ));
+        addNotification('Product deleted', 'info');
+    } catch (e) {
+        addNotification('Failed to delete product', 'error');
+    }
   };
 
-  const bulkUpdatePrices = (percentage: number, category?: string) => {
-    setRawProducts(rawProducts.map(p => {
+  const bulkUpdatePrices = async (percentage: number, category?: string) => {
+    const multiplier = 1 + (percentage / 100);
+    const updates: Product[] = [];
+    
+    const newProducts = rawProducts.map(p => {
       if (category && category !== 'All' && p.category !== category) return p;
-      const multiplier = 1 + (percentage / 100);
-      return { ...p, price: Math.round(p.price * multiplier) };
-    }));
+      const cleanP = sanitizeProductForStorage(p);
+      const updated = { ...cleanP, price: Math.round(p.price * multiplier) };
+      updates.push(updated);
+      return updated;
+    });
+
+    for (const p of updates) {
+        await db.putItem('products', p);
+    }
+
+    setRawProducts(newProducts);
     addNotification('Prices updated successfully', 'success');
+  };
+
+  // --- Notification System Logic ---
+  const dispatchNotifications = async (order: Order) => {
+    const config = settings.notifications;
+    if (!config) return;
+
+    // Check Threshold
+    if (order.total < config.orderAmountThreshold) return;
+
+    const itemsSummary = order.items.map(i => `${i.name} (x${i.quantity})`).join(', ');
+    
+    for (const admin of config.admins) {
+       // Skip if no valid channels
+       if (!admin.channels.includes('WHATSAPP') && !admin.channels.includes('IN_APP')) continue;
+
+       // 1. Construct Message based on Language
+       let header = '';
+       let body = '';
+       
+       if (admin.language === 'ar') {
+          header = '📦 طلب جديد وصل!';
+          body = `تم استلام الطلب رقم ${order.id} من العميل ${order.customerName}.\nالإجمالي: ${order.total} جنيه\nالمنطقة: ${order.deliveryLocation?.city || 'غير محدد'}\nالأصناف: ${itemsSummary}`;
+       } else {
+          header = '📦 New Order Received!';
+          body = `Order ${order.id} has been placed by ${order.customerName}.\nAmount: ${order.total} EGP\nArea: ${order.deliveryLocation?.city || 'Unknown'}\nItems: ${itemsSummary}`;
+       }
+
+       // 2. Create Log Entry
+       const logEntry: NotificationLog = {
+         id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+         orderId: order.id,
+         recipient: admin.name,
+         recipientPhone: admin.phone,
+         channel: config.enableWhatsApp && admin.channels.includes('WHATSAPP') ? 'WHATSAPP' : 'IN_APP',
+         status: 'SENT', // Simulating successful send
+         messageHeader: header,
+         messageBody: body,
+         timestamp: new Date().toISOString()
+       };
+
+       await db.putItem('notification_logs', logEntry);
+       setNotificationLogs(prev => [logEntry, ...prev]);
+       
+       // 3. Trigger In-App UI for current user if they are an admin (Simulated)
+       if (user?.isAdmin) {
+          addNotification(`New Order: ${order.customerName} (${order.total} EGP)`, 'info');
+       }
+    }
+  };
+  
+  const sendTestNotification = async () => {
+     // Creates a dummy order to test the flow
+     const dummyOrder: Order = {
+       id: 'TEST-' + Math.floor(Math.random() * 1000),
+       date: new Date().toISOString(),
+       items: [{ id: '1', name: 'Blue Party Cups', price: 50, category: Category.PARTY_SUPPLIES, description: '', image: '', isCustomizable: false, stock: 100, rating: 5, quantity: 2 }],
+       total: 1250,
+       status: 'Processing',
+       address: 'Test Address, Sheikh Zayed',
+       deliveryLocation: { address: 'Sheikh Zayed', city: 'Sheikh Zayed', governorate: 'Giza' },
+       paymentMethod: PaymentMethod.COD,
+       customerName: 'Sarah Ahmed',
+       customerPhone: '01000000000',
+       deliveryFee: 50
+     };
+     await dispatchNotifications(dummyOrder);
+     addNotification('Test notifications dispatched to logs.', 'success');
   };
 
   // --- Cart & Orders ---
@@ -426,11 +519,10 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-  const placeOrder = (location: DeliveryLocation, paymentMethod: PaymentMethod) => {
+  const placeOrder = async (location: DeliveryLocation, paymentMethod: PaymentMethod) => {
     if (!user) return;
     
     let deliveryFee = settings.shipping.flatRate;
-    // Manual address implies standard shipping fee
     if (cartTotal >= settings.shipping.freeShippingThreshold) {
       deliveryFee = 0;
     }
@@ -449,24 +541,40 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       deliveryFee: deliveryFee
     };
     
-    setOrders([newOrder, ...orders]);
-    setCart([]);
-    addNotification('Order placed successfully!', 'success');
+    try {
+        await db.putItem('orders', newOrder);
+        setOrders(prev => [newOrder, ...prev]);
+        setCart([]);
+        
+        // TRIGGER NOTIFICATIONS
+        await dispatchNotifications(newOrder);
+        
+        addNotification('Order placed successfully!', 'success');
+    } catch (e) {
+        addNotification('Failed to place order', 'error');
+    }
   };
 
-  const updateOrderStatus = (id: string, status: Order['status']) => {
-    setOrders(orders.map(o => o.id === id ? { ...o, status } : o));
-    addNotification(`Order #${id} updated to ${status}`, 'info');
+  const updateOrderStatus = async (id: string, status: Order['status']) => {
+    const order = orders.find(o => o.id === id);
+    if (order) {
+        const updated = { ...order, status };
+        await db.putItem('orders', updated);
+        setOrders(prev => prev.map(o => o.id === id ? updated : o));
+        addNotification(`Order #${id} updated to ${status}`, 'info');
+    }
   };
 
   // --- Coupons ---
-  const addCoupon = (coupon: Coupon) => {
-    setCoupons([...coupons, coupon]);
+  const addCoupon = async (coupon: Coupon) => {
+    await db.putItem('coupons', coupon);
+    setCoupons(prev => [...prev, coupon]);
     addNotification('Coupon created', 'success');
   };
 
-  const deleteCoupon = (id: string) => {
-    setCoupons(coupons.filter(c => c.id !== id));
+  const deleteCoupon = async (id: string) => {
+    await db.deleteItem('coupons', id);
+    setCoupons(prev => prev.filter(c => c.id !== id));
     addNotification('Coupon deleted', 'info');
   };
 
@@ -478,6 +586,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   return (
     <StoreContext.Provider value={{
+      isLoading,
       user, login, logout, updateUser, changeLanguage,
       addAddress, deleteAddress,
       products, addProduct, updateProduct, deleteProduct, bulkUpdatePrices,
@@ -487,7 +596,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       users, toggleUserAdmin,
       coupons, addCoupon, deleteCoupon,
       settings, updateSettings,
-      notifications, addNotification, removeNotification
+      notifications, addNotification, removeNotification, resetSystem,
+      notificationLogs, sendTestNotification
     }}>
       {children}
     </StoreContext.Provider>

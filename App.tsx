@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect } from 'react';
 import { StoreProvider, useStore, Notification } from './context/StoreContext';
 import { BottomNav } from './components/BottomNav';
@@ -9,7 +11,7 @@ import { Checkout } from './pages/Checkout';
 import { Profile } from './pages/Profile';
 import { Admin } from './pages/Admin';
 import { Auth } from './components/Auth';
-import { CheckCircle, Info, AlertCircle, X } from 'lucide-react';
+import { CheckCircle, Info, AlertCircle, X, Loader } from 'lucide-react';
 
 const SplashScreen = () => (
   <div className="fixed inset-0 bg-brand-600 flex flex-col items-center justify-center z-50 animate-fade-out">
@@ -19,6 +21,13 @@ const SplashScreen = () => (
     <h1 className="text-4xl font-bold text-white tracking-tight uppercase font-sans">Hamess Pack</h1>
     <p className="text-brand-200 mt-2 tracking-widest text-xs uppercase font-bold">Plastics • Birthday • Party • Accessories</p>
   </div>
+);
+
+const LoadingScreen = () => (
+   <div className="fixed inset-0 bg-white flex flex-col items-center justify-center z-50">
+      <Loader className="animate-spin text-brand-600 mb-4" size={40} />
+      <p className="text-gray-500 font-medium">Loading Database...</p>
+   </div>
 );
 
 const Toast: React.FC<{ notification: Notification; onClose: () => void }> = ({ notification, onClose }) => {
@@ -46,7 +55,7 @@ const Toast: React.FC<{ notification: Notification; onClose: () => void }> = ({ 
 };
 
 const AppContent: React.FC = () => {
-  const { user, logout, notifications, removeNotification } = useStore();
+  const { user, logout, notifications, removeNotification, isLoading } = useStore();
   const [showSplash, setShowSplash] = useState(true);
   
   // Simple Routing State
@@ -62,6 +71,10 @@ const AppContent: React.FC = () => {
 
   if (showSplash) {
     return <SplashScreen />;
+  }
+
+  if (isLoading) {
+      return <LoadingScreen />;
   }
 
   if (!user) {

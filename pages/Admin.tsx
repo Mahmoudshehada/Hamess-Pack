@@ -1,21 +1,660 @@
-
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useStore } from '../context/StoreContext';
-import { Category, Product, Coupon } from '../types';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { Category, Product, Coupon, AIRecommendation, PurchaseOrder, Supplier } from '../types';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, LineChart, Line, AreaChart, Area } from 'recharts';
 import { 
   LayoutDashboard, Package, Users, ShoppingCart, Settings, Tag, 
   LogOut, Plus, Search, Trash2, Edit2, Download, Upload, 
-  RefreshCw, DollarSign, Truck, CreditCard, TrendingUp, TrendingDown, Image as ImageIcon, FileImage
+  RefreshCw, DollarSign, Truck, CreditCard, TrendingUp, TrendingDown, 
+  Image as ImageIcon, FileImage, Brain, AlertTriangle, Zap, MessageCircle,
+  Factory, CheckCircle, XCircle, Send, HardDrive, AlertOctagon, Bell, Mail, Smartphone
 } from 'lucide-react';
+import { SystemHealth } from '../components/SystemHealth';
 
 interface AdminProps {
   onBack: () => void;
 }
 
-type View = 'dashboard' | 'products' | 'orders' | 'users' | 'coupons' | 'settings';
+type View = 'dashboard' | 'products' | 'orders' | 'users' | 'coupons' | 'settings' | 'assistant' | 'supply_chain' | 'notifications';
+
+// --- AI Logic Helper ---
+const generateInsights = (products: Product[], orders: any[]): AIRecommendation[] => {
+  const recommendations: AIRecommendation[] = [];
+
+  // 1. Calculate Velocity (Sales per day over last 30 days)
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const productSales: Record<string, number> = {};
+  
+  orders.forEach(order => {
+    if (new Date(order.date) >= thirtyDaysAgo) {
+      order.items.forEach((item: any) => {
+        productSales[item.id] = (productSales[item.id] || 0) + item.quantity;
+      });
+    }
+  });
+
+  products.forEach(product => {
+    const salesLast30Days = productSales[product.id] || 0;
+    const velocity = salesLast30Days / 30; // Daily sales
+    const daysRemaining = velocity > 0 ? product.stock / velocity : 999;
+
+    // Logic A: Urgent Reorder (Stock < 2 days or absolute stock < 5 for active items)
+    if ((daysRemaining < 2 || product.stock <= 5) && velocity > 0.1) {
+      const reorderQty = Math.ceil(velocity * 30); // Suggest 30 days stock
+      recommendations.push({
+        id: `rec_${product.id}_urgent`,
+        type: 'REORDER',
+        severity: 'URGENT',
+        productId: product.id,
+        productName: product.name,
+        currentStock: product.stock,
+        velocity: Number(velocity.toFixed(2)),
+        daysRemaining: Number(daysRemaining.toFixed(1)),
+        suggestion: {
+          action: 'Restock Immediate',
+          value: reorderQty,
+          rationaleEn: `Critical Low Stock. Will run out in ~${(daysRemaining * 24).toFixed(0)} hours based on sales.`,
+          rationaleAr: `مخزون حرج. سينفذ خلال ${(daysRemaining * 24).toFixed(0)} ساعة بناءً على المبيعات.`
+        }
+      });
+    }
+    // Logic B: Warning (Stock < 7 days)
+    else if (daysRemaining < 7 && velocity > 0.1) {
+      recommendations.push({
+        id: `rec_${product.id}_warn`,
+        type: 'REORDER',
+        severity: 'WARNING',
+        productId: product.id,
+        productName: product.name,
+        currentStock: product.stock,
+        velocity: Number(velocity.toFixed(2)),
+        daysRemaining: Number(daysRemaining.toFixed(1)),
+        suggestion: {
+          action: 'Plan Restock',
+          value: Math.ceil(velocity * 14),
+          rationaleEn: `Stock running low. Coverage for ${daysRemaining.toFixed(0)} days remaining.`,
+          rationaleAr: `المخزون ينخفض. يكفي لمدة ${daysRemaining.toFixed(0)} يوم فقط.`
+        }
+      });
+    }
+    // Logic C: Dead Stock Opportunity (Days Remaining > 90 days & Stock > 20 units)
+    else if (daysRemaining > 90 && product.stock > 20) {
+      recommendations.push({
+        id: `rec_${product.id}_deal`,
+        type: 'DISCOUNT',
+        severity: 'OPPORTUNITY',
+        productId: product.id,
+        productName: product.name,
+        currentStock: product.stock,
+        velocity: Number(velocity.toFixed(2)),
+        daysRemaining: 999, // effectively infinite
+        suggestion: {
+          action: 'Flash Sale',
+          value: '20%',
+          rationaleEn: `Slow moving item. Apply 20% discount to free up capital.`,
+          rationaleAr: `حركة بطيئة. خصم 20% قد يساعد في تحريك المخزون.`
+        }
+      });
+    }
+  });
+
+  return recommendations.sort((a, b) => {
+    const severityOrder = { URGENT: 0, WARNING: 1, OPPORTUNITY: 2 };
+    return severityOrder[a.severity] - severityOrder[b.severity];
+  });
+};
 
 // --- Sub-Components ---
+
+const NotificationsView: React.FC = () => {
+  const { settings, updateSettings, notificationLogs, sendTestNotification } = useStore();
+  const [activeTab, setActiveTab] = useState<'config' | 'logs'>('config');
+
+  const toggleChannel = (channel: 'enableWhatsApp' | 'enablePush' | 'enableEmailDigest') => {
+     updateSettings({
+       ...settings,
+       notifications: {
+         ...settings.notifications,
+         [channel]: !settings.notifications[channel]
+       }
+     });
+  };
+
+  const updateThreshold = (val: number) => {
+     updateSettings({
+       ...settings,
+       notifications: {
+         ...settings.notifications,
+         orderAmountThreshold: val
+       }
+     });
+  };
+
+  return (
+    <div className="p-6 max-w-6xl mx-auto animate-fade-in">
+       <div className="flex justify-between items-center mb-6">
+         <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+           <Bell className="text-brand-600" /> Notification Center
+         </h2>
+         <div className="flex bg-white rounded-lg p-1 border border-gray-200">
+            <button 
+              onClick={() => setActiveTab('config')}
+              className={`px-4 py-2 rounded-md text-sm font-bold transition ${activeTab === 'config' ? 'bg-brand-50 text-brand-700' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Settings
+            </button>
+            <button 
+              onClick={() => setActiveTab('logs')}
+              className={`px-4 py-2 rounded-md text-sm font-bold transition ${activeTab === 'logs' ? 'bg-brand-50 text-brand-700' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Logs
+            </button>
+         </div>
+       </div>
+
+       {activeTab === 'config' ? (
+         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Col: Toggles */}
+            <div className="lg:col-span-2 space-y-6">
+               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                  <h3 className="font-bold text-lg mb-4">Global Channels</h3>
+                  <div className="space-y-4">
+                     <div className="flex items-center justify-between p-4 bg-green-50 rounded-xl border border-green-100">
+                        <div className="flex items-center gap-3">
+                           <div className="bg-green-100 p-2 rounded-full text-green-600"><MessageCircle size={20} /></div>
+                           <div>
+                              <h4 className="font-bold text-gray-900">WhatsApp Alerts</h4>
+                              <p className="text-xs text-gray-500">Real-time order messages via Twilio.</p>
+                           </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input type="checkbox" checked={settings.notifications?.enableWhatsApp} onChange={() => toggleChannel('enableWhatsApp')} className="sr-only peer" />
+                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+                        </label>
+                     </div>
+
+                     <div className="flex items-center justify-between p-4 bg-blue-50 rounded-xl border border-blue-100">
+                        <div className="flex items-center gap-3">
+                           <div className="bg-blue-100 p-2 rounded-full text-blue-600"><Smartphone size={20} /></div>
+                           <div>
+                              <h4 className="font-bold text-gray-900">Push Notifications</h4>
+                              <p className="text-xs text-gray-500">Mobile app push via Firebase (FCM).</p>
+                           </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input type="checkbox" checked={settings.notifications?.enablePush} onChange={() => toggleChannel('enablePush')} className="sr-only peer" />
+                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+                        </label>
+                     </div>
+
+                     <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200 opacity-75">
+                        <div className="flex items-center gap-3">
+                           <div className="bg-gray-200 p-2 rounded-full text-gray-600"><Mail size={20} /></div>
+                           <div>
+                              <h4 className="font-bold text-gray-900">Daily Email Digest</h4>
+                              <p className="text-xs text-gray-500">Summary of daily sales at 10 PM.</p>
+                           </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input type="checkbox" checked={settings.notifications?.enableEmailDigest} onChange={() => toggleChannel('enableEmailDigest')} className="sr-only peer" />
+                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+                        </label>
+                     </div>
+                  </div>
+               </div>
+
+               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                  <h3 className="font-bold text-lg mb-4">Rules & Thresholds</h3>
+                  <div>
+                     <label className="block text-sm font-medium text-gray-700 mb-2">Minimum Order Amount</label>
+                     <div className="flex items-center gap-4">
+                        <input 
+                           type="number" 
+                           value={settings.notifications?.orderAmountThreshold} 
+                           onChange={(e) => updateThreshold(Number(e.target.value))}
+                           className="w-32 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+                        />
+                        <p className="text-xs text-gray-500">Only notify admins if order total is greater than this amount. Set to 0 to notify for all orders.</p>
+                     </div>
+                  </div>
+               </div>
+               
+               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                  <h3 className="font-bold text-lg mb-4">Testing</h3>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-gray-600">Send a test notification to verify WhatsApp templates and logging.</p>
+                    <button 
+                      onClick={sendTestNotification}
+                      className="px-4 py-2 bg-brand-600 text-white rounded-lg font-bold hover:bg-brand-700 flex items-center gap-2"
+                    >
+                       <Send size={16} /> Send Test
+                    </button>
+                  </div>
+               </div>
+            </div>
+
+            {/* Right Col: Admin List */}
+            <div className="space-y-6">
+               <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-6 rounded-2xl text-white shadow-lg">
+                  <h3 className="font-bold text-lg mb-4">Active Admins</h3>
+                  <div className="space-y-4">
+                     {settings.notifications?.admins.map((admin, idx) => (
+                        <div key={idx} className="bg-white/10 p-3 rounded-xl border border-white/10">
+                           <div className="flex justify-between items-start mb-1">
+                              <span className="font-bold text-sm">{admin.name}</span>
+                              <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded text-white font-mono">{admin.language.toUpperCase()}</span>
+                           </div>
+                           <p className="text-xs text-gray-400 mb-2">{admin.phone}</p>
+                           <div className="flex gap-2">
+                              {admin.channels.map(ch => (
+                                 <span key={ch} className="text-[10px] font-bold text-brand-200 bg-brand-900/50 px-1.5 py-0.5 rounded">{ch}</span>
+                              ))}
+                           </div>
+                        </div>
+                     ))}
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-4">Admin list is managed in system config.</p>
+               </div>
+            </div>
+         </div>
+       ) : (
+         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <table className="w-full text-left text-sm">
+               <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                     <th className="p-4 font-medium text-gray-500">Time</th>
+                     <th className="p-4 font-medium text-gray-500">Recipient</th>
+                     <th className="p-4 font-medium text-gray-500">Order ID</th>
+                     <th className="p-4 font-medium text-gray-500">Channel</th>
+                     <th className="p-4 font-medium text-gray-500">Status</th>
+                     <th className="p-4 font-medium text-gray-500">Message Preview</th>
+                  </tr>
+               </thead>
+               <tbody className="divide-y divide-gray-100">
+                  {notificationLogs.map(log => (
+                     <tr key={log.id} className="hover:bg-gray-50">
+                        <td className="p-4 text-gray-500 whitespace-nowrap">{new Date(log.timestamp).toLocaleTimeString()}</td>
+                        <td className="p-4 font-bold text-gray-900">{log.recipient}</td>
+                        <td className="p-4 font-mono text-xs">{log.orderId}</td>
+                        <td className="p-4">
+                           {log.channel === 'WHATSAPP' && <span className="flex items-center gap-1 text-green-600 font-bold text-xs"><MessageCircle size={14} /> WhatsApp</span>}
+                           {log.channel === 'IN_APP' && <span className="flex items-center gap-1 text-blue-600 font-bold text-xs"><Bell size={14} /> In-App</span>}
+                        </td>
+                        <td className="p-4">
+                           <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">{log.status}</span>
+                        </td>
+                        <td className="p-4 text-gray-600 max-w-xs truncate" title={log.messageBody}>
+                           {log.messageHeader} - {log.messageBody.substring(0, 30)}...
+                        </td>
+                     </tr>
+                  ))}
+                  {notificationLogs.length === 0 && (
+                     <tr>
+                        <td colSpan={6} className="p-8 text-center text-gray-400">No notification logs found.</td>
+                     </tr>
+                  )}
+               </tbody>
+            </table>
+         </div>
+       )}
+    </div>
+  );
+};
+
+const SupplyChainView: React.FC = () => {
+  const { products } = useStore();
+  
+  // Mock Suppliers
+  const [suppliers] = useState<Supplier[]>([
+    { id: 'sup-001', name: 'Al-Amal Plastics', contactPhone: '01012345678', email: 'orders@alamal.com', leadTimeDays: 3 },
+    { id: 'sup-002', name: 'Cairo Packaging Co.', contactPhone: '01234567890', email: 'sales@cairopack.com', leadTimeDays: 5 }
+  ]);
+
+  // Mock POs
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([
+    {
+      id: 'PO-2024-001',
+      supplierId: 'sup-001',
+      supplierName: 'Al-Amal Plastics',
+      status: 'draft',
+      createdDate: new Date().toISOString(),
+      items: [
+        { productId: 'prod-cub-2025', productName: 'Cub 2025 (Blue Cups)', currentStock: 15, reorderQty: 500, cost: 4000 }
+      ],
+      totalCost: 4000
+    },
+     {
+      id: 'PO-2024-002',
+      supplierId: 'sup-002',
+      supplierName: 'Cairo Packaging Co.',
+      status: 'sent',
+      createdDate: new Date(Date.now() - 86400000).toISOString(),
+      items: [
+        { productId: '2', productName: 'Luxury Gift Box', currentStock: 8, reorderQty: 200, cost: 12000 }
+      ],
+      totalCost: 12000
+    }
+  ]);
+
+  // Mock Forecast Data
+  const forecastData = [
+    { day: 'Mon', actual: 120, predicted: 130 },
+    { day: 'Tue', actual: 132, predicted: 125 },
+    { day: 'Wed', actual: 101, predicted: 110 },
+    { day: 'Thu', actual: 134, predicted: 140 },
+    { day: 'Fri', actual: 190, predicted: 180 },
+    { day: 'Sat', actual: 230, predicted: 210 },
+    { day: 'Sun', actual: 210, predicted: 200 },
+    { day: 'Next Mon', predicted: 140 },
+    { day: 'Next Tue', predicted: 135 },
+  ];
+
+  const handleApprovePO = (id: string) => {
+    setPurchaseOrders(prev => prev.map(po => 
+      po.id === id ? { ...po, status: 'sent' } : po
+    ));
+    alert(`PO #${id} approved and sent to supplier via WhatsApp.`);
+  };
+
+  return (
+    <div className="p-6 max-w-7xl mx-auto animate-fade-in space-y-8">
+      <div className="flex justify-between items-center">
+        <div>
+           <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+             <Factory className="text-brand-600" /> Supply Chain Autopilot
+           </h2>
+           <p className="text-gray-500 text-sm mt-1">Auto-generated purchase orders & demand forecasting.</p>
+        </div>
+        <button className="bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-brand-700">
+          <Plus size={16} /> New PO
+        </button>
+      </div>
+
+      {/* Forecasting Chart */}
+      <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+        <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+          <TrendingUp size={20} className="text-blue-600" /> AI Demand Forecast
+        </h3>
+        <div className="h-64 w-full">
+           <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={forecastData}>
+                <defs>
+                  <linearGradient id="colorPred" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#d6336c" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#d6336c" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="day" axisLine={false} tickLine={false} fontSize={12} tick={{fill: '#9ca3af'}} />
+                <YAxis axisLine={false} tickLine={false} fontSize={12} tick={{fill: '#9ca3af'}} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                <Tooltip contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'}} />
+                <Legend />
+                <Area type="monotone" dataKey="actual" stroke="#1f2937" fill="transparent" strokeWidth={3} name="Actual Sales" />
+                <Area type="monotone" dataKey="predicted" stroke="#d6336c" fill="url(#colorPred)" strokeWidth={3} strokeDasharray="5 5" name="AI Prediction" />
+              </AreaChart>
+           </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Draft POs */}
+      <div>
+        <h3 className="font-bold text-lg text-gray-900 mb-4">Pending Approvals</h3>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+           {purchaseOrders.filter(po => po.status === 'draft').map(po => (
+             <div key={po.id} className="bg-white p-5 rounded-2xl border border-orange-100 shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 right-0 bg-orange-100 text-orange-700 text-[10px] font-bold px-3 py-1 rounded-bl-xl uppercase">
+                   Action Required
+                </div>
+                <div className="flex items-center justify-between mb-3">
+                   <h4 className="font-bold text-gray-900">{po.id}</h4>
+                   <span className="text-xs text-gray-500">{new Date(po.createdDate).toLocaleDateString()}</span>
+                </div>
+                <p className="text-sm text-gray-600 mb-1"><span className="font-bold">Supplier:</span> {po.supplierName}</p>
+                <p className="text-sm text-gray-600 mb-3"><span className="font-bold">Total:</span> {po.totalCost} EGP</p>
+                
+                <div className="bg-gray-50 p-3 rounded-xl mb-4">
+                   <p className="text-xs font-bold text-gray-500 uppercase mb-1">Items to Reorder</p>
+                   {po.items.map((item, i) => (
+                      <div key={i} className="flex justify-between text-sm">
+                         <span>{item.productName}</span>
+                         <span className="font-bold">x{item.reorderQty}</span>
+                      </div>
+                   ))}
+                </div>
+
+                <div className="flex gap-2">
+                   <button 
+                    onClick={() => handleApprovePO(po.id)}
+                    className="flex-1 bg-brand-600 text-white py-2 rounded-lg font-bold text-sm hover:bg-brand-700 flex items-center justify-center gap-2"
+                   >
+                     <Send size={14} /> Approve & Send
+                   </button>
+                   <button className="px-3 bg-red-50 text-red-600 rounded-lg hover:bg-red-100">
+                     <Trash2 size={18} />
+                   </button>
+                </div>
+             </div>
+           ))}
+           {purchaseOrders.filter(po => po.status === 'draft').length === 0 && (
+             <div className="col-span-full p-8 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                <CheckCircle className="mx-auto text-green-400 mb-2" size={32} />
+                <p className="text-gray-500">No pending purchase orders.</p>
+             </div>
+           )}
+        </div>
+      </div>
+
+      {/* Order History Table */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+            <h3 className="font-bold text-gray-900">Order History</h3>
+            <button className="text-brand-600 text-sm font-bold">View All</button>
+         </div>
+         <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                 <th className="p-4 font-medium text-gray-500">PO ID</th>
+                 <th className="p-4 font-medium text-gray-500">Supplier</th>
+                 <th className="p-4 font-medium text-gray-500">Date</th>
+                 <th className="p-4 font-medium text-gray-500">Status</th>
+                 <th className="p-4 font-medium text-gray-500 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+               {purchaseOrders.filter(po => po.status !== 'draft').map(po => (
+                 <tr key={po.id} className="hover:bg-gray-50">
+                    <td className="p-4 font-bold text-gray-900">{po.id}</td>
+                    <td className="p-4">{po.supplierName}</td>
+                    <td className="p-4 text-gray-500">{new Date(po.createdDate).toLocaleDateString()}</td>
+                    <td className="p-4">
+                       <span className={`px-2 py-1 rounded text-xs font-bold ${
+                         po.status === 'sent' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                       }`}>
+                         {po.status.toUpperCase()}
+                       </span>
+                    </td>
+                    <td className="p-4 text-right font-medium">{po.totalCost} EGP</td>
+                 </tr>
+               ))}
+            </tbody>
+         </table>
+      </div>
+
+    </div>
+  );
+};
+
+const AIAssistantView: React.FC = () => {
+  const { products, orders, updateProduct, bulkUpdatePrices } = useStore();
+  const recommendations = useMemo(() => generateInsights(products, orders), [products, orders]);
+  
+  const urgentCount = recommendations.filter(r => r.severity === 'URGENT').length;
+  const opportunityCount = recommendations.filter(r => r.severity === 'OPPORTUNITY').length;
+
+  const handleApplyAction = (rec: AIRecommendation) => {
+    if (rec.type === 'DISCOUNT') {
+      const discount = parseInt(rec.suggestion.value as string);
+      const product = products.find(p => p.id === rec.productId);
+      if (product) {
+        const newPrice = Math.floor(product.price * (1 - discount/100));
+        updateProduct({ ...product, price: newPrice });
+        alert(`Applied ${discount}% discount to ${product.name}. New Price: ${newPrice}`);
+      }
+    } else if (rec.type === 'REORDER') {
+      // In a real app, this would generate a PO PDF or email supplier
+      const message = `
+        SUPPLIER ORDER REQUEST
+        ----------------------
+        Product: ${rec.productName}
+        Qty Needed: ${rec.suggestion.value}
+        Urgency: ${rec.severity}
+      `;
+      alert("Reorder Request Generated:\n" + message);
+    }
+  };
+
+  return (
+    <div className="p-6 max-w-7xl mx-auto animate-fade-in">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900">
+            <Brain className="text-brand-600" /> Smart Assistant
+          </h2>
+          <p className="text-gray-500 text-sm mt-1">AI-driven inventory analysis & growth suggestions</p>
+        </div>
+        
+        <div className="flex gap-4">
+           <div className="bg-red-50 px-4 py-2 rounded-xl border border-red-100 flex items-center gap-3">
+              <div className="bg-red-100 p-2 rounded-full text-red-600"><AlertTriangle size={16} /></div>
+              <div>
+                <span className="block text-xl font-bold text-red-700 leading-none">{urgentCount}</span>
+                <span className="text-[10px] text-red-400 uppercase font-bold">Critical</span>
+              </div>
+           </div>
+           <div className="bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 flex items-center gap-3">
+              <div className="bg-blue-100 p-2 rounded-full text-blue-600"><Zap size={16} /></div>
+              <div>
+                <span className="block text-xl font-bold text-blue-700 leading-none">{opportunityCount}</span>
+                <span className="text-[10px] text-blue-400 uppercase font-bold">Opportunities</span>
+              </div>
+           </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* Left Column: Alerts Feed */}
+        <div className="lg:col-span-2 space-y-6">
+          <h3 className="font-bold text-gray-800 text-lg">Insights Feed</h3>
+          
+          {recommendations.length === 0 && (
+            <div className="bg-white p-8 rounded-2xl border border-gray-100 text-center">
+               <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                 <Zap size={32} />
+               </div>
+               <h4 className="font-bold text-gray-900">All Systems Optimal</h4>
+               <p className="text-gray-500 text-sm">Inventory levels are healthy and prices are competitive.</p>
+            </div>
+          )}
+
+          {recommendations.map(rec => (
+            <div 
+              key={rec.id} 
+              className={`p-5 rounded-2xl border shadow-sm relative overflow-hidden transition hover:shadow-md ${
+                rec.severity === 'URGENT' ? 'bg-white border-red-100 border-l-4 border-l-red-500' : 
+                rec.severity === 'WARNING' ? 'bg-white border-yellow-100 border-l-4 border-l-yellow-500' :
+                'bg-white border-blue-100 border-l-4 border-l-blue-500'
+              }`}
+            >
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                   <div className="flex items-center gap-2 mb-1">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
+                        rec.severity === 'URGENT' ? 'bg-red-100 text-red-700' : 
+                        rec.severity === 'WARNING' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-blue-100 text-blue-700'
+                      }`}>
+                        {rec.severity}
+                      </span>
+                      <span className="text-xs text-gray-400 font-mono">{rec.productId}</span>
+                   </div>
+                   <h4 className="font-bold text-gray-900 text-lg">{rec.productName}</h4>
+                   <div className="flex gap-4 mt-2 text-sm text-gray-600">
+                      <span>Current Stock: <b className="text-gray-900">{rec.currentStock}</b></span>
+                      <span>Daily Sales: <b className="text-gray-900">{rec.velocity}</b>/day</span>
+                   </div>
+                   
+                   <div className="mt-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                      <div className="flex gap-2 mb-1">
+                         <span className="text-xs font-bold text-gray-500 uppercase">EN:</span>
+                         <p className="text-sm text-gray-700">{rec.suggestion.rationaleEn}</p>
+                      </div>
+                      <div className="flex gap-2">
+                         <span className="text-xs font-bold text-gray-500 uppercase">AR:</span>
+                         <p className="text-sm text-gray-700 font-sans" dir="rtl">{rec.suggestion.rationaleAr}</p>
+                      </div>
+                   </div>
+                </div>
+
+                <div className="flex flex-col items-end gap-2 min-w-[120px] ml-4">
+                   <div className="text-right">
+                      <span className="block text-xs text-gray-400 uppercase font-bold">Suggestion</span>
+                      <span className="block text-xl font-bold text-brand-600">
+                        {rec.type === 'DISCOUNT' ? `${rec.suggestion.value} OFF` : `+${rec.suggestion.value} Units`}
+                      </span>
+                   </div>
+                   <button 
+                      onClick={() => handleApplyAction(rec)}
+                      className={`mt-2 w-full py-2 px-3 rounded-lg text-xs font-bold text-white shadow-sm transition transform active:scale-95 ${
+                         rec.type === 'DISCOUNT' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-900 hover:bg-black'
+                      }`}
+                   >
+                      {rec.type === 'DISCOUNT' ? 'Apply Offer' : 'Create PO'}
+                   </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Right Column: Alerts Config */}
+        <div className="space-y-6">
+           <div className="bg-gradient-to-br from-brand-900 to-brand-700 p-6 rounded-2xl shadow-lg text-white">
+              <div className="flex items-start justify-between mb-4">
+                 <div>
+                   <h3 className="font-bold text-lg">Admin Alerts</h3>
+                   <p className="text-brand-200 text-xs">Real-time notification service.</p>
+                 </div>
+                 <Bell className="text-brand-200" />
+              </div>
+              <div className="space-y-3">
+                 <div className="flex items-center gap-3 bg-white/10 p-2 rounded-lg">
+                    <div className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center font-bold text-xs">WS</div>
+                    <div>
+                       <p className="text-xs font-bold">Walid El Sheikh</p>
+                       <p className="text-[10px] text-brand-200">Arabic (WhatsApp)</p>
+                    </div>
+                 </div>
+                 <div className="flex items-center gap-3 bg-white/10 p-2 rounded-lg">
+                    <div className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center font-bold text-xs">MS</div>
+                    <div>
+                       <p className="text-xs font-bold">Mahmoud Shehada</p>
+                       <p className="text-[10px] text-brand-200">English (WhatsApp)</p>
+                    </div>
+                 </div>
+              </div>
+              <p className="text-[10px] text-brand-300 mt-4 opacity-80">
+                Status: Online • Twilio Service Active
+              </p>
+           </div>
+        </div>
+
+      </div>
+    </div>
+  );
+};
 
 const DashboardView: React.FC = () => {
   const { orders } = useStore();
@@ -49,6 +688,9 @@ const DashboardView: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6">
+      {/* SYSTEM HEALTH CHECK - NEW COMPONENT */}
+      <SystemHealth />
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
@@ -184,11 +826,10 @@ const ProductsView: React.FC = () => {
 
   useEffect(() => {
     if (selectedFile) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewUrl(reader.result as string);
-      };
-      reader.readAsDataURL(selectedFile);
+        // Fast preview for UI
+        const url = URL.createObjectURL(selectedFile);
+        setPreviewUrl(url);
+        return () => URL.revokeObjectURL(url);
     } else if (formData.image) {
       setPreviewUrl(formData.image);
     } else {
@@ -213,7 +854,7 @@ const ProductsView: React.FC = () => {
       price: 100,
       costPrice: 50,
       rating: 5,
-      image: '', // Empty initially, requires upload
+      image: '',
       colors: []
     });
     setSelectedFile(null);
@@ -233,43 +874,41 @@ const ProductsView: React.FC = () => {
 
     try {
       let finalProduct = { ...formData } as Product;
-      const productId = editingProduct ? editingProduct.id : Math.random().toString(36).substr(2, 9);
+      // Generate ID if new
+      const productId = editingProduct ? editingProduct.id : `prod_${Date.now()}_${Math.random().toString(36).substr(2,5)}`;
+      finalProduct.id = productId;
       
-      // Handle ID assignment if new
-      if (!editingProduct) {
-        finalProduct.id = productId;
-      }
-
-      // Handle Image Upload - Safe Update Logic
-      if (selectedFile) {
-        // If user selected a new file, upload it
-        const storedImage = await uploadProductImage(selectedFile, productId);
-        finalProduct.imageId = storedImage.id;
-        finalProduct.imagePath = storedImage.path;
-        
-        // Don't store huge base64 in the product object itself (it's in storedImages)
-        finalProduct.image = ''; 
-      } else if (finalProduct.imageId) {
-         // PRESERVE EXISTING IMAGE:
-         // If we already have an imageId and no new file selected, 
-         // keep the link and ensure we don't accidentally save a base64 blob from previewUrl
-         finalProduct.image = ''; 
-      } else if (!editingProduct && !formData.image) {
-        // New product must have an image
-        alert("Please upload an image for the new product");
-        setIsUploading(false);
-        return;
+      // 1. Save Product Basic Info (Critical Path) - ATOMIC SAVE
+      if (!finalProduct.image) {
+          finalProduct.image = 'https://via.placeholder.com/400?text=No+Image'; 
       }
 
       if (editingProduct) {
-        updateProduct(finalProduct);
+        await updateProduct(finalProduct);
       } else {
-        addProduct(finalProduct);
+        await addProduct(finalProduct);
       }
+
+      // 2. Handle Image Upload (Secondary Path)
+      if (selectedFile) {
+         try {
+            const uploadedImg = await uploadProductImage(selectedFile, productId);
+            finalProduct.imageId = uploadedImg.id;
+            const productToPersist = {
+              ...finalProduct,
+              image: uploadedImg.path 
+            };
+            await updateProduct(productToPersist);
+         } catch (imgErr) {
+            console.error("Image upload failed", imgErr);
+            alert("Product saved successfully, but image upload failed.");
+         }
+      }
+
       setShowModal(false);
     } catch (error) {
       console.error("Failed to save product", error);
-      // Error notification is handled in StoreContext
+      alert("Failed to save product. Storage might be full.");
     } finally {
       setIsUploading(false);
     }
@@ -333,7 +972,6 @@ const ProductsView: React.FC = () => {
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-lg bg-gray-100 overflow-hidden border border-gray-200 relative">
                         <img src={product.image} alt="" className="w-full h-full object-cover" />
-                        {product.imagePath && <div className="absolute bottom-0 right-0 bg-brand-600 w-2 h-2 rounded-full border border-white"></div>}
                       </div>
                       <div>
                          <span className="font-medium text-gray-900 block">{product.name}</span>
@@ -670,7 +1308,7 @@ const CouponsView: React.FC = () => {
 };
 
 const SettingsView: React.FC = () => {
-  const { settings, updateSettings } = useStore();
+  const { settings, updateSettings, resetSystem } = useStore();
   const [localSettings, setLocalSettings] = useState(settings);
 
   const handleSave = () => {
@@ -766,6 +1404,26 @@ const SettingsView: React.FC = () => {
         <button onClick={handleSave} className="w-full py-3 bg-brand-600 text-white rounded-xl font-bold shadow-lg hover:bg-brand-700 flex items-center justify-center gap-2">
           <RefreshCw size={20} /> Save Settings
         </button>
+
+        {/* Danger Zone */}
+        <section className="bg-red-50 p-6 rounded-2xl border border-red-100 mt-8">
+          <h3 className="font-bold text-lg mb-2 flex items-center gap-2 text-red-700">
+            <AlertOctagon size={20} /> Danger Zone
+          </h3>
+          <p className="text-sm text-red-600 mb-4">
+            Use this to wipe all products, orders, and data if the system becomes unstable or you want to start fresh. This cannot be undone.
+          </p>
+          <button 
+             onClick={() => {
+                if(confirm("Are you absolutely sure? This will delete ALL products, images, and orders.")) {
+                   resetSystem();
+                }
+             }}
+             className="w-full py-3 bg-white border border-red-200 text-red-600 rounded-xl font-bold hover:bg-red-100 flex items-center justify-center gap-2"
+          >
+             <Trash2 size={20} /> Factory Reset System
+          </button>
+        </section>
       </div>
     </div>
   );
@@ -827,6 +1485,9 @@ export const Admin: React.FC<AdminProps> = ({ onBack }) => {
 
   const navItems: { id: View, label: string, icon: any }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'notifications', label: 'Notifications', icon: Bell }, // Added Notification Nav
+    { id: 'assistant', label: 'Smart Assistant', icon: Brain },
+    { id: 'supply_chain', label: 'Supply Chain', icon: Factory },
     { id: 'products', label: 'Products', icon: Package },
     { id: 'orders', label: 'Orders', icon: ShoppingCart },
     { id: 'users', label: 'Users', icon: Users },
@@ -868,11 +1529,14 @@ export const Admin: React.FC<AdminProps> = ({ onBack }) => {
       {/* Main Content */}
       <main className="flex-1 h-screen overflow-y-auto relative">
         <header className="bg-white border-b border-gray-200 p-4 sticky top-0 z-10 flex justify-between items-center md:hidden">
-           <span className="font-bold text-gray-800 capitalize">{currentView}</span>
+           <span className="font-bold text-gray-800 capitalize">{currentView.replace('_', ' ')}</span>
         </header>
         
         <div className="animate-fade-in">
           {currentView === 'dashboard' && <DashboardView />}
+          {currentView === 'assistant' && <AIAssistantView />}
+          {currentView === 'notifications' && <NotificationsView />} 
+          {currentView === 'supply_chain' && <SupplyChainView />}
           {currentView === 'products' && <ProductsView />}
           {currentView === 'orders' && <OrdersView />}
           {currentView === 'users' && <UsersView />}

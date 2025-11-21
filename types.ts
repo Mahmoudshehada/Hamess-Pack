@@ -1,4 +1,5 @@
 
+
 export interface Product {
   id: string;
   name: string;
@@ -117,6 +118,33 @@ export interface Coupon {
   usageCount: number;
 }
 
+export interface NotificationAdminProfile {
+  name: string;
+  phone: string;
+  language: 'en' | 'ar';
+  channels: ('WHATSAPP' | 'PUSH' | 'EMAIL')[];
+}
+
+export interface NotificationConfig {
+  enableWhatsApp: boolean;
+  enablePush: boolean;
+  enableEmailDigest: boolean;
+  orderAmountThreshold: number;
+  admins: NotificationAdminProfile[];
+}
+
+export interface NotificationLog {
+  id: string;
+  orderId: string;
+  recipient: string; // Name of admin
+  recipientPhone: string;
+  channel: 'WHATSAPP' | 'PUSH' | 'IN_APP';
+  status: 'SENT' | 'FAILED' | 'QUEUED';
+  messageHeader: string;
+  messageBody: string;
+  timestamp: string;
+}
+
 export interface AppSettings {
   brandColor: string;
   currency: string;
@@ -129,4 +157,59 @@ export interface AppSettings {
     flatRate: number;
     freeShippingThreshold: number;
   };
+  notifications: NotificationConfig;
+}
+
+// --- AI / Smart Assistant Types ---
+export interface AIRecommendation {
+  id: string;
+  type: 'REORDER' | 'DISCOUNT' | 'BUNDLE';
+  severity: 'URGENT' | 'WARNING' | 'OPPORTUNITY';
+  productId: string;
+  productName: string;
+  currentStock: number;
+  velocity: number; // Sales per day
+  daysRemaining: number;
+  suggestion: {
+    action: string;
+    value: string | number; // e.g. reorder qty or discount %
+    rationaleEn: string;
+    rationaleAr: string;
+  };
+}
+
+// --- Auto-Reorder & Forecasting Types ---
+export interface Supplier {
+  id: string;
+  name: string;
+  contactPhone: string;
+  email: string;
+  leadTimeDays: number;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  supplierId: string;
+  supplierName: string;
+  status: 'draft' | 'pending_approval' | 'sent' | 'fulfilled' | 'cancelled';
+  createdDate: string;
+  items: {
+    productId: string;
+    productName: string;
+    currentStock: number;
+    reorderQty: number;
+    cost: number;
+  }[];
+  totalCost: number;
+  notes?: string;
+}
+
+export interface DemandForecast {
+  productId: string;
+  forecast: {
+    date: string;
+    predictedSales: number;
+    confidenceLow: number;
+    confidenceHigh: number;
+  }[];
 }

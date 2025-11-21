@@ -1,4 +1,5 @@
 
+
 import React, { useState } from 'react';
 import { useStore } from '../context/StoreContext';
 import { ArrowRight, Smartphone, Lock, User, Mail } from 'lucide-react';
