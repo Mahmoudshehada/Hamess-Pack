@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import { MapPin, Navigation, Search, AlertTriangle, Map as MapIcon, X } from 'lucide-react';
 import { DeliveryLocation } from '../types';
@@ -35,20 +36,20 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
     // Define global error handler for Google Maps
     window.gm_authFailure = () => {
       console.error("Google Maps Authentication Failure (Billing or API Key issue)");
-      setError('Map service unavailable. Switched to manual entry.');
+      // Force manual mode immediately
       setManualMode(true);
+      setError('Map service unavailable (Billing/API Key error). Please enter address manually.');
       setMapReady(false);
     };
     
     // Check for missing API key immediately
     if (!GOOGLE_MAPS_API_KEY) {
-      setError('Configuration missing. Switching to manual entry.');
+      setError('Map configuration missing. Switching to manual entry.');
       setManualMode(true);
     }
 
-    // Cleanup
     return () => {
-      window.gm_authFailure = () => {};
+      // window.gm_authFailure = () => {}; // Don't clear immediately to catch late errors
     };
   }, []);
 
@@ -80,10 +81,10 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
              clearInterval(checkGoogle);
              if (!mapReady && !manualMode && !window.google) {
                  console.warn("Map loading timed out (existing script).");
-                 setError('Map loading timed out. Switched to manual entry.');
                  setManualMode(true);
+                 setError('Map loading timed out. Switched to manual entry.');
              }
-         }, 8000);
+         }, 5000); // Reduced timeout for faster fallback
          return;
       }
 
@@ -99,8 +100,9 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
       };
       
       script.onerror = () => {
-        setError('Failed to connect to maps. Please enter address manually.');
+        console.error("Google Maps script failed to load.");
         setManualMode(true);
+        setError('Failed to connect to maps. Please enter address manually.');
       };
       
       document.body.appendChild(script);
@@ -110,11 +112,11 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
         if (!window.google || !window.google.maps) {
              console.warn("Map load timeout");
              if (!manualMode) {
-               setError('Map loading timed out. Switching to manual mode.');
                setManualMode(true);
+               setError('Map services unavailable. Switching to manual mode.');
              }
         }
-      }, 10000);
+      }, 5000); // Reduced timeout for faster fallback
     };
 
     loadGoogleMaps();
@@ -184,7 +186,7 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
                 });
             } catch (e) {
                 console.warn("Places API initialization failed:", e);
-                // We don't fallback to manual here, just autocomplete won't work nicely
+                // This often fails if Places API is not enabled. We just don't get autocomplete.
             }
         }
 
@@ -203,19 +205,30 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
 
     } catch (err) {
         console.error("Error initializing map:", err);
-        setError("Map initialization error. Switched to manual.");
         setManualMode(true);
+        setError("Map initialization error (Check console). Switched to manual.");
     }
   };
 
   const geocodePosition = (pos: any) => {
     if (!window.google || !window.google.maps) return;
-    const geocoder = new window.google.maps.Geocoder();
-    geocoder.geocode({ location: pos }, (results: any, status: any) => {
-      if (status === 'OK' && results[0]) {
-        updateLocation(pos, results[0].formatted_address, results[0].place_id);
-      }
-    });
+    try {
+        const geocoder = new window.google.maps.Geocoder();
+        geocoder.geocode({ location: pos }, (results: any, status: any) => {
+        if (status === 'OK' && results[0]) {
+            updateLocation(pos, results[0].formatted_address, results[0].place_id);
+        } else {
+             // If Geocoding API is not enabled, this will fail. We fallback gracefully.
+             console.warn("Geocoding failed:", status);
+             if (status === 'REQUEST_DENIED' || status === 'OVER_QUERY_LIMIT') {
+                 // Likely API key issue
+                 setError("Map services restricted. Please enter address details below.");
+             }
+        }
+        });
+    } catch (e) {
+        console.warn("Geocoder error", e);
+    }
   };
 
   const updateLocation = (pos: any, address: string, placeId?: string) => {
@@ -237,7 +250,7 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
   };
 
   const calculateDistance = (lat: number, lng: number, callback: (dist: number, dur: string) => void) => {
-    // Check if maps API is available, if not (e.g. billing error) return defaults
+    // Check if maps API is available
     if (!window.google || !window.google.maps || !window.google.maps.DistanceMatrixService) {
         callback(0, 'Standard Delivery');
         return;
@@ -300,6 +313,7 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
   const handleManualChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setAddressText(val);
+    // When typing manually, we don't have coordinates yet.
     onLocationSelect({
         address: val,
         lat: 0,
@@ -315,14 +329,14 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
             {error && (
                 <div className="bg-orange-50 border border-orange-200 text-orange-800 p-3 rounded-xl text-xs flex items-center gap-2">
                     <AlertTriangle size={16} className="flex-shrink-0" /> 
-                    <span>{error}</span>
-                    <button onClick={() => setError(null)} className="ml-auto"><X size={14} /></button>
+                    <span className="flex-1">{error}</span>
+                    <button onClick={() => setError(null)} className="ml-auto hover:bg-orange-100 rounded-full p-1"><X size={14} /></button>
                 </div>
             )}
              <div className="relative">
                 <input
                     type="text"
-                    placeholder="Enter your full address details (Street, Building, Floor)..."
+                    placeholder="Enter your full address (City, Street, Building)..."
                     value={addressText}
                     onChange={handleManualChange}
                     autoFocus
@@ -332,7 +346,7 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
              </div>
              <div className="flex justify-between items-center">
                 <p className="text-[10px] text-gray-500 px-1">
-                    * Provide detailed address for faster delivery.
+                    * Providing detailed address helps us deliver faster.
                 </p>
                 <button 
                     type="button"
@@ -351,7 +365,7 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-600 p-3 rounded-xl text-sm flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-                <AlertTriangle size={16} /> <span>{error}</span>
+                <AlertTriangle size={16} /> <span className="text-xs">{error}</span>
             </div>
             <button onClick={() => setError(null)}><X size={14} /></button>
         </div>
@@ -361,7 +375,7 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
         <input
           ref={inputRef}
           type="text"
-          placeholder="Search for your address..."
+          placeholder="Search map..."
           defaultValue={addressText}
           onChange={(e) => setAddressText(e.target.value)}
           className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
@@ -369,20 +383,22 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
         <Search className="absolute left-3 top-3.5 text-gray-400" size={20} />
       </div>
 
-      <div className="relative h-64 w-full rounded-xl overflow-hidden border border-gray-200 shadow-inner bg-gray-100">
+      <div className="relative h-64 w-full rounded-xl overflow-hidden border border-gray-200 shadow-inner bg-gray-100 group">
         <div ref={mapRef} className="w-full h-full" />
         
         {!mapReady && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
                  <div className="flex flex-col items-center p-4 text-center">
                      <div className="w-8 h-8 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin mb-2"></div>
-                     <span className="text-xs text-gray-400">Loading Map...</span>
-                     <button 
-                        onClick={() => setManualMode(true)} 
-                        className="mt-4 text-xs text-brand-600 underline"
-                     >
-                        Switch to Manual Entry
-                     </button>
+                     <span className="text-xs text-gray-400">Initializing Map...</span>
+                     <div className="mt-4">
+                         <button 
+                            onClick={() => setManualMode(true)} 
+                            className="text-xs text-brand-600 underline hover:text-brand-800"
+                         >
+                            Problem loading? Enter Address Manually
+                         </button>
+                     </div>
                  </div>
             </div>
         )}
@@ -404,14 +420,14 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onLocationSelect, initialL
       <div className="flex justify-between items-center px-1">
          <div className="flex items-center gap-2 text-xs text-gray-500">
             <MapPin size={12} />
-            <span>Drag pin to adjust location.</span>
+            <span>Drag pin to confirm.</span>
          </div>
          <button 
             type="button"
             onClick={() => setManualMode(true)} 
-            className="text-xs font-medium text-brand-600 hover:underline"
+            className="text-xs font-medium text-brand-600 hover:underline px-2 py-1 rounded hover:bg-gray-100"
          >
-            Enter Address Manually
+            Switch to Manual Entry
          </button>
       </div>
     </div>

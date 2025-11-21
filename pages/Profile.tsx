@@ -1,10 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
 import { 
   Package, MapPin, Settings, LogOut, Phone, User as UserIcon, 
   ChevronRight, X, Save, Calendar, Mail, Lock, Globe, Bell, 
-  Plus, Trash2, Shield, Camera, Home, Map, ChevronLeft
+  Plus, Trash2, Shield, Camera, Home, Map, ChevronLeft, Heart
 } from 'lucide-react';
 import { MapPicker } from '../components/MapPicker';
 import { DeliveryLocation } from '../types';
@@ -20,10 +20,23 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
   const { user, orders, updateUser, changeLanguage, uploadUserAvatar, addAddress, deleteAddress } = useStore();
   const [currentView, setCurrentView] = useState<SettingsView>('overview');
   
-  // Temporary States for Forms
+  // Form States
   const [profileForm, setProfileForm] = useState({ name: '', phone: '', email: '', birthday: '', country: '' });
-  const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' });
-  const [emailForm, setEmailForm] = useState({ newEmail: '', token: '' });
+  
+  // Initialize form when user data is available
+  useEffect(() => {
+    if (user) {
+      setProfileForm({
+        name: user.name,
+        phone: user.phone,
+        email: user.email,
+        birthday: user.birthday || '',
+        country: user.country || 'Egypt'
+      });
+    }
+  }, [user]);
+
+  // Other temporary states
   const [emailStep, setEmailStep] = useState<'request' | 'verify'>('request');
   const [newAddressLabel, setNewAddressLabel] = useState('Home');
 
@@ -32,6 +45,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
   const isRTL = user.language === 'ar';
   
   const ordersCount = orders.length;
+  // Simulating returns for now
   const returnsCount = 0;
 
   // --- Handlers ---
@@ -70,7 +84,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
     setCurrentView('addresses');
   };
 
-  // --- Translations (Simple Object for demo) ---
+  // --- Translations ---
   const t = {
     orders: isRTL ? 'الطلبات' : 'Orders',
     returns: isRTL ? 'المرتجعات' : 'Returns',
@@ -88,7 +102,29 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
     bday: isRTL ? 'تاريخ الميلاد' : 'Birthday',
     country: isRTL ? 'البلد' : 'Country',
     noOrders: isRTL ? 'لا يوجد طلبات حتى الآن' : 'No orders yet',
-    items: isRTL ? 'عناصر' : 'Items'
+    items: isRTL ? 'عناصر' : 'Items',
+    changePhoto: isRTL ? 'تغيير الصورة' : 'Tap to change photo',
+    addressLabel: isRTL ? 'نوع العنوان' : 'Label (e.g. Home, Work)',
+    addNewAddress: isRTL ? 'إضافة عنوان جديد' : 'Add New Address',
+    notifications: isRTL ? 'الإشعارات' : 'Notifications',
+    lang: isRTL ? 'اللغة' : 'Language',
+    change: isRTL ? 'تغيير' : 'Change',
+    emailNote: isRTL ? 'لتغيير البريد الإلكتروني، انتقل إلى إعدادات الأمان.' : 'To change email, go to Security settings.',
+    securityTitle: isRTL ? 'الأمان' : 'Security',
+    changePass: isRTL ? 'تغيير كلمة المرور' : 'Change Password',
+    changeEmail: isRTL ? 'تغيير البريد الإلكتروني' : 'Change Email',
+    currentPass: isRTL ? 'كلمة المرور الحالية' : 'Current Password',
+    newPass: isRTL ? 'كلمة المرور الجديدة' : 'New Password',
+    confirmPass: isRTL ? 'تأكيد كلمة المرور' : 'Confirm New Password',
+    updatePass: isRTL ? 'تحديث كلمة المرور' : 'Update Password',
+    verify: isRTL ? 'تحقق' : 'Verify',
+    confirm: isRTL ? 'تأكيد' : 'Confirm',
+    enterToken: isRTL ? 'أدخل الرمز' : 'Enter 4-digit Token',
+    newEmail: isRTL ? 'البريد الإلكتروني الجديد' : 'New Email Address',
+    delete: isRTL ? 'حذف' : 'Delete',
+    default: isRTL ? 'افتراضي' : 'Default',
+    hello: isRTL ? 'مرحباً' : 'Hello',
+    emptyAddr: isRTL ? 'لا توجد عناوين محفوظة' : 'No saved addresses.'
   };
 
   // --- Sub-Views ---
@@ -96,7 +132,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
   const EditProfileView = () => (
     <div className="animate-slide-in">
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => setCurrentView('overview')} className="p-2 hover:bg-gray-100 rounded-full">
+        <button onClick={() => setCurrentView('overview')} className="p-2 hover:bg-gray-100 rounded-full transition">
            <ChevronLeft size={24} className={isRTL ? 'rotate-180' : ''} />
         </button>
         <h2 className="text-xl font-bold">{t.editProfile}</h2>
@@ -123,38 +159,66 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
              onChange={handleAvatarChange}
           />
         </div>
-        <p className="text-xs text-gray-400 mt-2">Tap to change photo</p>
+        <p className="text-xs text-gray-400 mt-2">{t.changePhoto}</p>
       </div>
 
       <form onSubmit={handleProfileSave} className="space-y-4 max-w-md mx-auto">
         <div>
            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{t.name}</label>
-           <input required type="text" value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} className="w-full p-3 bg-white border border-gray-200 rounded-xl" />
+           <input 
+              required 
+              type="text" 
+              value={profileForm.name} 
+              onChange={e => setProfileForm({...profileForm, name: e.target.value})} 
+              className="w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none" 
+           />
         </div>
         <div>
            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{t.phone}</label>
-           <input required type="tel" value={profileForm.phone} onChange={e => setProfileForm({...profileForm, phone: e.target.value})} className="w-full p-3 bg-white border border-gray-200 rounded-xl" />
+           <input 
+              required 
+              type="tel" 
+              value={profileForm.phone} 
+              onChange={e => setProfileForm({...profileForm, phone: e.target.value})} 
+              className="w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none" 
+           />
         </div>
         <div>
            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
-           <input disabled type="email" value={profileForm.email} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-400 cursor-not-allowed" />
-           <p className="text-[10px] text-gray-400 mt-1">To change email, go to Security settings.</p>
+           <input 
+              disabled 
+              type="email" 
+              value={profileForm.email} 
+              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-400 cursor-not-allowed" 
+           />
+           <p className="text-[10px] text-gray-400 mt-1">{t.emailNote}</p>
         </div>
         <div className="grid grid-cols-2 gap-4">
            <div>
              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{t.bday}</label>
-             <input type="date" value={profileForm.birthday} onChange={e => setProfileForm({...profileForm, birthday: e.target.value})} className="w-full p-3 bg-white border border-gray-200 rounded-xl" />
+             <input 
+                type="date" 
+                value={profileForm.birthday} 
+                onChange={e => setProfileForm({...profileForm, birthday: e.target.value})} 
+                className="w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none" 
+             />
            </div>
            <div>
              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{t.country}</label>
-             <select value={profileForm.country} onChange={e => setProfileForm({...profileForm, country: e.target.value})} className="w-full p-3 bg-white border border-gray-200 rounded-xl">
+             <select 
+                value={profileForm.country} 
+                onChange={e => setProfileForm({...profileForm, country: e.target.value})} 
+                className="w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+             >
                 <option value="Egypt">Egypt</option>
                 <option value="UAE">UAE</option>
                 <option value="KSA">KSA</option>
+                <option value="Qatar">Qatar</option>
+                <option value="Kuwait">Kuwait</option>
              </select>
            </div>
         </div>
-        <button type="submit" className="w-full py-4 bg-brand-600 text-white rounded-xl font-bold shadow-lg mt-4 flex items-center justify-center gap-2">
+        <button type="submit" className="w-full py-4 bg-brand-600 text-white rounded-xl font-bold shadow-lg mt-4 flex items-center justify-center gap-2 hover:bg-brand-700 transition">
           <Save size={18} /> {t.save}
         </button>
       </form>
@@ -165,12 +229,12 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
     <div className="animate-slide-in">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <button onClick={() => setCurrentView('overview')} className="p-2 hover:bg-gray-100 rounded-full">
+          <button onClick={() => setCurrentView('overview')} className="p-2 hover:bg-gray-100 rounded-full transition">
              <ChevronLeft size={24} className={isRTL ? 'rotate-180' : ''} />
           </button>
           <h2 className="text-xl font-bold">{t.addresses}</h2>
         </div>
-        <button onClick={() => setCurrentView('add-address')} className="text-brand-600 text-sm font-bold flex items-center gap-1">
+        <button onClick={() => setCurrentView('add-address')} className="text-brand-600 text-sm font-bold flex items-center gap-1 hover:bg-brand-50 px-3 py-1 rounded-lg transition">
            <Plus size={16} /> {isRTL ? 'إضافة' : 'Add New'}
         </button>
       </div>
@@ -179,19 +243,19 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
          {user.addresses.length === 0 && (
             <div className="text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
                <MapPin className="mx-auto text-gray-300 mb-2" size={32} />
-               <p className="text-gray-400 text-sm">No saved addresses.</p>
+               <p className="text-gray-400 text-sm">{t.emptyAddr}</p>
             </div>
          )}
          {user.addresses.map(addr => (
-           <div key={addr.id} className="p-4 border border-gray-200 rounded-2xl flex items-start justify-between bg-white">
+           <div key={addr.id} className="p-4 border border-gray-200 rounded-2xl flex items-start justify-between bg-white shadow-sm hover:shadow-md transition">
               <div className="flex items-start gap-3">
-                 <div className="mt-1 text-brand-600"><Home size={20} /></div>
+                 <div className="mt-1 text-brand-600 bg-brand-50 p-2 rounded-full"><Home size={18} /></div>
                  <div>
-                    <h4 className="font-bold text-gray-900">{addr.label} {addr.isDefault && <span className="text-[10px] bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full ml-2">Default</span>}</h4>
+                    <h4 className="font-bold text-gray-900">{addr.label} {addr.isDefault && <span className="text-[10px] bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full ml-2">{t.default}</span>}</h4>
                     <p className="text-sm text-gray-500 mt-1 leading-snug">{addr.formattedAddress}</p>
                  </div>
               </div>
-              <button onClick={() => deleteAddress(addr.id)} className="text-gray-300 hover:text-red-500 p-2">
+              <button onClick={() => deleteAddress(addr.id)} className="text-gray-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition">
                  <Trash2 size={18} />
               </button>
            </div>
@@ -203,28 +267,25 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
   const AddAddressView = () => (
     <div className="animate-slide-in h-full flex flex-col">
       <div className="flex items-center gap-3 mb-4">
-        <button onClick={() => setCurrentView('addresses')} className="p-2 hover:bg-gray-100 rounded-full">
+        <button onClick={() => setCurrentView('addresses')} className="p-2 hover:bg-gray-100 rounded-full transition">
            <ChevronLeft size={24} className={isRTL ? 'rotate-180' : ''} />
         </button>
-        <h2 className="text-xl font-bold">{isRTL ? 'عنوان جديد' : 'New Address'}</h2>
+        <h2 className="text-xl font-bold">{t.addNewAddress}</h2>
       </div>
       
       <div className="mb-4">
-         <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Label (e.g. Home, Work)</label>
+         <label className="block text-xs font-bold text-gray-500 uppercase mb-2">{t.addressLabel}</label>
          <div className="flex gap-2">
             {['Home', 'Work', 'Other'].map(l => (
-               <button key={l} onClick={() => setNewAddressLabel(l)} className={`px-4 py-2 rounded-lg text-sm font-medium border ${newAddressLabel === l ? 'bg-brand-600 text-white border-brand-600' : 'bg-white border-gray-200 text-gray-600'}`}>
+               <button key={l} onClick={() => setNewAddressLabel(l)} className={`px-4 py-2 rounded-lg text-sm font-medium border transition ${newAddressLabel === l ? 'bg-brand-600 text-white border-brand-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                  {l}
                </button>
             ))}
          </div>
       </div>
 
-      <div className="flex-1 bg-gray-100 rounded-2xl overflow-hidden relative border border-gray-200">
+      <div className="flex-1 bg-gray-100 rounded-2xl overflow-hidden relative border border-gray-200 shadow-inner">
          <MapPicker onLocationSelect={handleAddressAdd} />
-         <div className="absolute top-4 left-4 right-4 pointer-events-none z-0">
-            {/* This is just to push content down if needed, logic is inside MapPicker */}
-         </div>
       </div>
     </div>
   );
@@ -232,7 +293,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
   const SecurityView = () => (
     <div className="animate-slide-in">
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => setCurrentView('overview')} className="p-2 hover:bg-gray-100 rounded-full">
+        <button onClick={() => setCurrentView('overview')} className="p-2 hover:bg-gray-100 rounded-full transition">
            <ChevronLeft size={24} className={isRTL ? 'rotate-180' : ''} />
         </button>
         <h2 className="text-xl font-bold">{t.security}</h2>
@@ -241,12 +302,12 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
       <div className="space-y-8">
          {/* Change Password */}
          <section>
-            <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Lock size={18} /> Change Password</h3>
+            <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Lock size={18} /> {t.changePass}</h3>
             <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); alert("Password Updated!"); }}>
-               <input type="password" placeholder="Current Password" className="w-full p-3 bg-white border border-gray-200 rounded-xl" />
-               <input type="password" placeholder="New Password" className="w-full p-3 bg-white border border-gray-200 rounded-xl" />
-               <input type="password" placeholder="Confirm New Password" className="w-full p-3 bg-white border border-gray-200 rounded-xl" />
-               <button type="submit" className="px-6 py-2 bg-gray-900 text-white rounded-lg font-bold text-sm">Update Password</button>
+               <input type="password" placeholder={t.currentPass} className="w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none" />
+               <input type="password" placeholder={t.newPass} className="w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none" />
+               <input type="password" placeholder={t.confirmPass} className="w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none" />
+               <button type="submit" className="px-6 py-2 bg-gray-900 text-white rounded-lg font-bold text-sm hover:bg-black transition">{t.updatePass}</button>
             </form>
          </section>
          
@@ -254,16 +315,16 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
 
          {/* Change Email */}
          <section>
-            <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Mail size={18} /> Change Email</h3>
+            <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Mail size={18} /> {t.changeEmail}</h3>
             {emailStep === 'request' ? (
                <div className="flex gap-2">
-                  <input type="email" placeholder="New Email Address" className="flex-1 p-3 bg-white border border-gray-200 rounded-xl" />
-                  <button onClick={() => setEmailStep('verify')} className="px-4 bg-brand-50 text-brand-600 font-bold rounded-xl">Verify</button>
+                  <input type="email" placeholder={t.newEmail} className="flex-1 p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none" />
+                  <button onClick={() => setEmailStep('verify')} className="px-4 bg-brand-50 text-brand-600 font-bold rounded-xl hover:bg-brand-100 transition">{t.verify}</button>
                </div>
             ) : (
                <div className="flex gap-2 animate-fade-in">
-                  <input type="text" placeholder="Enter 4-digit Token" className="flex-1 p-3 bg-white border border-gray-200 rounded-xl" />
-                  <button onClick={() => { alert("Email Changed!"); setEmailStep('request'); }} className="px-4 bg-green-600 text-white font-bold rounded-xl">Confirm</button>
+                  <input type="text" placeholder={t.enterToken} className="flex-1 p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none text-center tracking-widest" />
+                  <button onClick={() => { alert("Email Changed!"); setEmailStep('request'); }} className="px-4 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition">{t.confirm}</button>
                </div>
             )}
          </section>
@@ -274,34 +335,36 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
   const GeneralSettingsView = () => (
     <div className="animate-slide-in">
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => setCurrentView('overview')} className="p-2 hover:bg-gray-100 rounded-full">
+        <button onClick={() => setCurrentView('overview')} className="p-2 hover:bg-gray-100 rounded-full transition">
            <ChevronLeft size={24} className={isRTL ? 'rotate-180' : ''} />
         </button>
         <h2 className="text-xl font-bold">{t.settings}</h2>
       </div>
 
       <div className="space-y-4">
-         <div className="p-4 bg-white rounded-2xl border border-gray-200 flex items-center justify-between">
+         {/* Language Toggle */}
+         <div className="p-4 bg-white rounded-2xl border border-gray-200 flex items-center justify-between shadow-sm">
             <div className="flex items-center gap-3">
                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Globe size={20} /></div>
                <div>
-                  <h4 className="font-bold">Language / اللغة</h4>
+                  <h4 className="font-bold">{t.lang} / اللغة</h4>
                   <p className="text-xs text-gray-500">{user.language === 'en' ? 'English' : 'العربية'}</p>
                </div>
             </div>
             <button 
                onClick={() => changeLanguage(user.language === 'en' ? 'ar' : 'en')}
-               className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-bold transition"
+               className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-bold transition text-gray-700"
             >
                {user.language === 'en' ? 'العربية' : 'English'}
             </button>
          </div>
 
-         <div className="p-4 bg-white rounded-2xl border border-gray-200 flex items-center justify-between">
+         {/* Notifications Toggle */}
+         <div className="p-4 bg-white rounded-2xl border border-gray-200 flex items-center justify-between shadow-sm">
             <div className="flex items-center gap-3">
                <div className="p-2 bg-yellow-50 text-yellow-600 rounded-lg"><Bell size={20} /></div>
                <div>
-                  <h4 className="font-bold">{isRTL ? 'الإشعارات' : 'Notifications'}</h4>
+                  <h4 className="font-bold">{t.notifications}</h4>
                   <p className="text-xs text-gray-500">{user.notificationsEnabled ? 'On' : 'Off'}</p>
                </div>
             </div>
@@ -324,7 +387,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
   const Overview = () => (
     <>
       {/* Header Profile Section */}
-      <div className="bg-brand-600 p-8 pb-28 md:rounded-t-3xl text-white text-center relative z-0">
+      <div className="bg-brand-600 p-8 pb-28 md:rounded-t-3xl text-white text-center relative z-0 shadow-lg">
           <div className="absolute top-0 left-0 w-full h-full overflow-hidden opacity-20 pointer-events-none">
              <div className="absolute -top-24 -right-24 w-64 h-64 bg-white rounded-full blur-3xl"></div>
              <div className="absolute bottom-0 left-0 w-48 h-48 bg-brand-900 rounded-full blur-3xl"></div>
@@ -368,7 +431,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
             
             {/* Account Settings */}
             <div>
-               <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 ml-1">{t.account}</h2>
+               <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 ml-1 px-2">{t.account}</h2>
                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden divide-y divide-gray-50">
                  {user.isAdmin && (
                    <button 
@@ -416,7 +479,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
 
             {/* Recent Orders */}
             <div>
-              <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 ml-1">{t.orders}</h2>
+              <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 ml-1 px-2">{t.orders}</h2>
               <div className="space-y-3">
                 {orders.length === 0 ? (
                   <div className="text-center py-8 bg-white rounded-2xl border border-gray-100 border-dashed">
@@ -425,7 +488,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
                   </div>
                 ) : (
                   orders.slice(0, 3).map(order => (
-                    <div key={order.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
+                    <div key={order.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition cursor-pointer">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center font-bold text-sm">
                           #{order.id.slice(-4)}
@@ -442,7 +505,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
               </div>
             </div>
 
-            <button onClick={onLogout} className="w-full p-4 rounded-2xl border border-red-100 text-red-500 bg-white hover:bg-red-50 transition font-medium flex items-center justify-center gap-2">
+            <button onClick={onLogout} className="w-full p-4 rounded-2xl border border-red-100 text-red-500 bg-white hover:bg-red-50 transition font-medium flex items-center justify-center gap-2 shadow-sm">
               <LogOut size={18} /> {t.logout}
             </button>
           </div>

@@ -100,7 +100,7 @@ const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.
         const ctx = canvas.getContext('2d');
         if (ctx) {
             ctx.drawImage(img, 0, 0, width, height);
-            // Compress to JPEG
+            // Compress to JPEG with 80% quality
             resolve(canvas.toDataURL('image/jpeg', quality)); 
         } else {
             resolve(event.target?.result as string);
@@ -125,15 +125,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
-  // Safe Save Helper
+  // Safe Save Helper to handle QuotaExceededError
   const saveState = useCallback((key: string, value: any) => {
     try {
       const serialized = JSON.stringify(value);
       localStorage.setItem(key, serialized);
     } catch (e) {
       console.error(`Failed to save ${key}`, e);
+      // Check for quota exceeded errors
       if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
-         addNotification(`Storage Limit Reached! Failed to save ${key === 'hp_images' ? 'Images' : 'Data'}.`, 'error');
+         addNotification(`Storage Limit Reached! Failed to save ${key === 'hp_images' ? 'Images' : 'Data'}. Some data might be lost.`, 'error');
       }
     }
   }, [addNotification]);
@@ -161,11 +162,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     loadState('hp_users', [
       { 
         id: '1', name: 'Admin User', phone: '0000', email: 'admin@hamess.com', isAdmin: true, 
-        addresses: [], language: 'en', notificationsEnabled: true, country: 'Egypt' 
+        addresses: [], language: 'en', notificationsEnabled: true, country: 'Egypt', birthday: ''
       },
       { 
         id: 'manager-1', name: 'mahmoudshehada', phone: '01010340487', email: 'msbas999@gmail.com', isAdmin: true, 
-        addresses: [], language: 'en', notificationsEnabled: true, country: 'Egypt' 
+        addresses: [], language: 'en', notificationsEnabled: true, country: 'Egypt', birthday: ''
       }
     ])
   );
@@ -200,6 +201,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (user?.language) {
       document.documentElement.lang = user.language;
       document.documentElement.dir = user.language === 'ar' ? 'rtl' : 'ltr';
+    } else {
+      document.documentElement.dir = 'ltr';
     }
   }, [settings.brandColor, user?.language]);
 
@@ -219,7 +222,8 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         addresses: [],
         language: 'en',
         notificationsEnabled: true,
-        country: 'Egypt'
+        country: 'Egypt',
+        birthday: ''
       };
       setUsers(prev => [...prev, newUser]);
       setUser(newUser);
@@ -231,7 +235,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setUser(null);
     setCart([]);
     addNotification('Logged out successfully', 'info');
-    // Reset direction to default
     document.documentElement.dir = 'ltr';
   };
 
@@ -243,8 +246,13 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const updateUser = (updates: Partial<User>) => {
     if (!user) return;
     const updatedUser = { ...user, ...updates };
+    
+    // Update current session user
     setUser(updatedUser);
-    setUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
+    
+    // Update persistent users list
+    setUsers(prevUsers => prevUsers.map(u => u.id === user.id ? updatedUser : u));
+    
     addNotification('Profile updated successfully', 'success');
   };
 
@@ -261,17 +269,21 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
     const updatedAddresses = [...user.addresses, newAddress];
     updateUser({ addresses: updatedAddresses });
+    addNotification('Address added', 'success');
   };
 
   const deleteAddress = (id: string) => {
     if (!user) return;
     updateUser({ addresses: user.addresses.filter(a => a.id !== id) });
+    addNotification('Address removed', 'info');
   };
 
   // --- Image Logic ---
   const uploadProductImage = async (file: File, productId: string): Promise<StoredImage> => {
     try {
       if (file.size > 15 * 1024 * 1024) throw new Error("File too large.");
+      
+      // Aggressive compression: max 800x800, 80% quality
       const base64Data = await compressImage(file, 800, 800, 0.8);
       
       const ext = file.name.split('.').pop() || 'jpg';
@@ -298,6 +310,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const uploadUserAvatar = async (file: File): Promise<string> => {
      try {
+       // Avatar compression: max 400x400, 80% quality
        const base64Data = await compressImage(file, 400, 400, 0.8);
        if (user) updateUser({ avatar: base64Data });
        return base64Data;
