@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
 import { PaymentMethod, DeliveryLocation, Address } from '../types';
@@ -46,6 +45,7 @@ export const Checkout: React.FC<CheckoutProps> = ({ onOrderComplete, onBack }) =
     setIsProcessing(true);
     
     // Construct Delivery Location from Address + Checkout Notes
+    // SNAPSHOT CRITICAL DATA HERE
     const finalLocation: DeliveryLocation = {
       addressId: addressObj.id,
       address: `${addressObj.label}, ${addressObj.apartment ? addressObj.apartment + ', ' : ''}${addressObj.city}`,
@@ -53,7 +53,11 @@ export const Checkout: React.FC<CheckoutProps> = ({ onOrderComplete, onBack }) =
       city: addressObj.city,
       notes: notes + (addressObj.instructions ? ` | ${addressObj.instructions}` : ''),
       lat: addressObj.lat,
-      lng: addressObj.lng
+      lng: addressObj.lng,
+      // Snapshots
+      snapshotCity: addressObj.city,
+      snapshotName: addressObj.contactName,
+      snapshotPhone: addressObj.phone
     };
 
     // Simulate API call

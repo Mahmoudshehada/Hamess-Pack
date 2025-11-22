@@ -75,6 +75,10 @@ export interface DeliveryLocation {
   placeId?: string;
   distanceKm?: number;
   estimatedDuration?: string;
+  // Snapshot fields to ensure permanence
+  snapshotCity?: string;
+  snapshotPhone?: string;
+  snapshotName?: string;
 }
 
 export interface Order {
@@ -149,8 +153,8 @@ export interface SystemNotification {
   message: string;
   timestamp: string;
   isRead: boolean;
-  readBy?: string[]; 
-  data?: any; 
+  readBy?: string[]; // List of User IDs who read this
+  data?: any; // Extra metadata (orderId, productId)
   priority: 'high' | 'normal' | 'low';
 }
 

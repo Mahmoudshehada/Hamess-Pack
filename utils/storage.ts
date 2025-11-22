@@ -1,6 +1,6 @@
 
 const DB_NAME = 'HamessPackDB';
-const DB_VERSION = 5; // Increment version to force schema update
+const DB_VERSION = 9; // Incremented version to force schema update
 
 // Initialize Database
 export const initDB = (): Promise<IDBDatabase> => {
@@ -17,12 +17,11 @@ export const initDB = (): Promise<IDBDatabase> => {
     };
 
     request.onsuccess = () => {
-        console.log("Database connection established successfully.");
         resolve(request.result);
     };
 
     request.onupgradeneeded = (event) => {
-      console.log("Upgrading Database Schema...");
+      console.log("Upgrading Database Schema to v" + DB_VERSION + "...");
       const db = (event.target as IDBOpenDBRequest).result;
       
       // Products Store (Metadata only, lightweight)
@@ -47,6 +46,13 @@ export const initDB = (): Promise<IDBDatabase> => {
         db.createObjectStore('coupons', { keyPath: 'id' });
       }
       
+      // Users Store - CRITICAL FOR ADDRESS PERSISTENCE
+      if (!db.objectStoreNames.contains('users')) {
+        const store = db.createObjectStore('users', { keyPath: 'id' });
+        store.createIndex('phone', 'phone', { unique: true });
+        store.createIndex('email', 'email', { unique: true });
+      }
+      
       // System Notifications
       if (!db.objectStoreNames.contains('system_notifications')) {
         const store = db.createObjectStore('system_notifications', { keyPath: 'id' });
@@ -55,10 +61,10 @@ export const initDB = (): Promise<IDBDatabase> => {
       
       // Notification Logs
       if (!db.objectStoreNames.contains('notification_logs')) {
-        const store = db.createObjectStore('notification_logs', { keyPath: 'id' });
+        db.createObjectStore('notification_logs', { keyPath: 'id' });
       }
 
-      // Global Settings
+      // Global Settings & Session
       if (!db.objectStoreNames.contains('globals')) {
         db.createObjectStore('globals', { keyPath: 'key' });
       }
@@ -75,6 +81,11 @@ const performTransaction = <T>(
   return new Promise(async (resolve, reject) => {
     try {
       const db = await initDB();
+      if (!db.objectStoreNames.contains(storeName)) {
+          console.warn(`Store ${storeName} not found. DB might need upgrade.`);
+          return resolve([] as any); 
+      }
+
       const tx = db.transaction(storeName, mode);
       const store = tx.objectStore(storeName);
       const request = callback(store);
@@ -91,7 +102,6 @@ const performTransaction = <T>(
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => {
           console.error(`Request failed on ${storeName}:`, request.error);
-          // We don't reject here immediately, we let the transaction error handle it
       };
     } catch (e) {
       console.error("Database Error:", e);
@@ -103,7 +113,6 @@ const performTransaction = <T>(
 // --- CRUD Operations ---
 
 export const getAll = <T>(storeName: string): Promise<T[]> => {
-  console.log(`[DB Read] Fetching all from ${storeName}`);
   return performTransaction<T[]>(storeName, 'readonly', (store) => store.getAll());
 };
 
@@ -112,12 +121,10 @@ export const getOne = <T>(storeName: string, id: string): Promise<T | undefined>
 };
 
 export const putItem = (storeName: string, item: any): Promise<string> => {
-  console.log(`[DB Write] Saving to ${storeName}`, item.id || 'item');
   return performTransaction<string>(storeName, 'readwrite', (store) => store.put(item));
 };
 
 export const deleteItem = (storeName: string, id: string): Promise<void> => {
-  console.log(`[DB Delete] Removing from ${storeName}`, id);
   return performTransaction<void>(storeName, 'readwrite', (store) => store.delete(id));
 };
 
@@ -135,7 +142,6 @@ export const setGlobal = async (key: string, value: any): Promise<void> => {
 };
 
 export const bulkPut = async (storeName: string, items: any[]): Promise<void> => {
-    console.log(`[DB Bulk] Saving ${items.length} items to ${storeName}`);
     const db = await initDB();
     return new Promise((resolve, reject) => {
         const tx = db.transaction(storeName, 'readwrite');
@@ -143,19 +149,12 @@ export const bulkPut = async (storeName: string, items: any[]): Promise<void> =>
         
         items.forEach(item => store.put(item));
         
-        tx.oncomplete = () => {
-            console.log(`[DB Bulk] Success: ${storeName}`);
-            resolve();
-        };
-        tx.onerror = () => {
-            console.error(`[DB Bulk] Failed: ${storeName}`, tx.error);
-            reject(tx.error);
-        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
     });
 };
 
 export const clearStore = async (storeName: string): Promise<void> => {
-  console.warn(`[DB Clear] Wiping ${storeName}`);
   return performTransaction<void>(storeName, 'readwrite', (store) => store.clear());
 };
 

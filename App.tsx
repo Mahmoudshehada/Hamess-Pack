@@ -10,6 +10,7 @@ import { Checkout } from './pages/Checkout';
 import { Profile } from './pages/Profile';
 import { Admin } from './pages/Admin';
 import { Auth } from './components/Auth';
+import { FloatingAssistant } from './components/FloatingAssistant';
 import { CheckCircle, Info, AlertCircle, X, Loader } from 'lucide-react';
 
 const SplashScreen = () => (
@@ -166,6 +167,11 @@ const AppContent: React.FC = () => {
       <div className={`min-h-screen ${currentView === 'main' ? 'md:pt-20 pb-20 md:pb-0' : ''}`}>
         {renderContent()}
       </div>
+      
+      {/* GLOBAL FLOATING ASSISTANT */}
+      {(user.role === 'admin' || user.role === 'staff') && currentView !== 'checkout' && (
+          <FloatingAssistant />
+      )}
       
       <div className="fixed top-20 right-4 z-[60] flex flex-col items-end gap-2 pointer-events-none">
         {notifications.map(n => (
