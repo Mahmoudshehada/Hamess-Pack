@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, ReactNode, useMemo, useEffect, useCallback } from 'react';
 import { CartItem, Product, Order, User, Coupon, AppSettings, PaymentMethod, Category, StoredImage, DeliveryLocation, Address, NotificationLog } from '../types';
 import * as db from '../utils/storage';
+import { CATEGORY_IMAGES } from '../constants';
 
 export interface Notification {
   id: string;
@@ -31,7 +32,9 @@ interface StoreContextType {
   // Image Handling
   uploadProductImage: (file: File, productId: string) => Promise<StoredImage>;
   uploadUserAvatar: (file: File) => Promise<string>;
+  uploadCategoryImage: (category: string, file: File) => Promise<string>;
   storedImages: StoredImage[];
+  categoryImages: Record<string, string>;
   
   // Cart & Orders
   cart: CartItem[];
@@ -111,6 +114,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [user, setUser] = useState<User | null>(null);
   const [rawProducts, setRawProducts] = useState<Product[]>([]);
   const [storedImages, setStoredImages] = useState<StoredImage[]>([]);
+  const [categoryImages, setCategoryImages] = useState<Record<string, string>>(CATEGORY_IMAGES);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -155,18 +159,23 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const dbImages = await db.getAll<StoredImage>('images');
       setStoredImages(dbImages || []);
 
-      // 3. Load Orders
+      // 3. Load Category Images (Global Map)
+      const dbCategoryImages = await db.getGlobal<Record<string, string>>('hp_category_images', {});
+      // Merge with defaults (Constants are fallback, DB overwrites)
+      setCategoryImages({ ...CATEGORY_IMAGES, ...dbCategoryImages });
+
+      // 4. Load Orders
       const dbOrders = await db.getAll<Order>('orders');
       setOrders((dbOrders || []).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
 
-      // 4. Load Coupons & Logs
+      // 5. Load Coupons & Logs
       const dbCoupons = await db.getAll<Coupon>('coupons');
       setCoupons(dbCoupons || []);
       
       const dbLogs = await db.getAll<NotificationLog>('notification_logs');
       setNotificationLogs((dbLogs || []).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
 
-      // 5. Load Globals
+      // 6. Load Globals
       const loadedUser = await db.getGlobal<User | null>('hp_user', null);
       setUser(loadedUser);
 
@@ -221,9 +230,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       await db.clearStore('images');
       await db.clearStore('orders');
       await db.clearStore('notification_logs');
+      await db.deleteItem('globals', 'hp_category_images');
       
       setRawProducts([]);
       setStoredImages([]);
+      setCategoryImages(CATEGORY_IMAGES); // Reset to defaults
       setOrders([]);
       setNotificationLogs([]);
       
@@ -340,6 +351,25 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
        addNotification('Failed to update avatar', 'error');
        throw e;
      }
+  };
+
+  const uploadCategoryImage = async (category: string, file: File): Promise<string> => {
+    try {
+      const base64Data = await compressImage(file, 600, 600, 0.8);
+      
+      // Update State
+      const newMap = { ...categoryImages, [category]: base64Data };
+      setCategoryImages(newMap);
+      
+      // Persist to DB (Global Key)
+      await db.setGlobal('hp_category_images', newMap);
+      
+      addNotification('Category image updated', 'success');
+      return base64Data;
+    } catch (e) {
+      addNotification('Failed to update category image', 'error');
+      throw e;
+    }
   };
 
   // --- Product Logic ---
@@ -608,7 +638,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       user, login, logout, updateUser, changeLanguage,
       addAddress, deleteAddress,
       products, addProduct, updateProduct, deleteProduct, bulkUpdatePrices,
-      uploadProductImage, uploadUserAvatar, storedImages,
+      uploadProductImage, uploadUserAvatar, uploadCategoryImage, storedImages, categoryImages,
       cart, addToCart, removeFromCart, cartTotal,
       placeOrder, orders, updateOrderStatus,
       users, toggleUserAdmin,

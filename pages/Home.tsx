@@ -1,6 +1,6 @@
+
 import React from 'react';
 import { Category } from '../types';
-import { CATEGORY_IMAGES } from '../constants';
 import { useStore } from '../context/StoreContext';
 import { ArrowRight } from 'lucide-react';
 
@@ -10,7 +10,7 @@ interface HomeProps {
 }
 
 export const Home: React.FC<HomeProps> = ({ onNavigate, onProductClick }) => {
-  const { products } = useStore();
+  const { products, categoryImages } = useStore();
 
   return (
     <div className="animate-fade-in w-full">
@@ -78,7 +78,14 @@ export const Home: React.FC<HomeProps> = ({ onNavigate, onProductClick }) => {
                 className="flex flex-col items-center gap-3 cursor-pointer group"
               >
                 <div className="w-full aspect-square rounded-2xl overflow-hidden shadow-md group-hover:shadow-xl group-hover:-translate-y-1 transition duration-300 bg-white">
-                  <img src={CATEGORY_IMAGES[cat]} alt={cat} className="w-full h-full object-cover" />
+                  <img 
+                    src={categoryImages[cat] || 'https://via.placeholder.com/400?text=' + cat} 
+                    alt={cat} 
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.src = 'https://via.placeholder.com/400?text=No+Image';
+                    }}
+                  />
                 </div>
                 <span className="text-xs md:text-sm font-medium text-center text-gray-700 group-hover:text-brand-600 leading-tight">{cat}</span>
               </div>

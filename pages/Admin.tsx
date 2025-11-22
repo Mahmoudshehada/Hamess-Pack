@@ -8,7 +8,8 @@ import {
   LogOut, Plus, Search, Trash2, Edit2, Download, Upload, 
   RefreshCw, DollarSign, Truck, CreditCard, TrendingUp, TrendingDown, 
   Image as ImageIcon, FileImage, Brain, AlertTriangle, Zap, MessageCircle,
-  Factory, CheckCircle, XCircle, Send, HardDrive, AlertOctagon, Bell, Mail, Smartphone
+  Factory, CheckCircle, XCircle, Send, HardDrive, AlertOctagon, Bell, Mail, Smartphone,
+  LayoutGrid
 } from 'lucide-react';
 import { SystemHealth } from '../components/SystemHealth';
 
@@ -16,7 +17,7 @@ interface AdminProps {
   onBack: () => void;
 }
 
-type View = 'dashboard' | 'products' | 'orders' | 'users' | 'coupons' | 'settings' | 'assistant' | 'supply_chain' | 'notifications';
+type View = 'dashboard' | 'products' | 'orders' | 'users' | 'coupons' | 'settings' | 'assistant' | 'supply_chain' | 'notifications' | 'categories';
 
 // --- AI Logic Helper ---
 const generateInsights = (products: Product[], orders: any[]): AIRecommendation[] => {
@@ -108,6 +109,72 @@ const generateInsights = (products: Product[], orders: any[]): AIRecommendation[
 };
 
 // --- Sub-Components ---
+
+const CategoriesView: React.FC = () => {
+  const { categoryImages, uploadCategoryImage } = useStore();
+  const [uploadingCat, setUploadingCat] = useState<string | null>(null);
+
+  const handleFileChange = async (category: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setUploadingCat(category);
+      try {
+        await uploadCategoryImage(category, e.target.files[0]);
+      } catch (error) {
+        console.error("Failed to upload category image", error);
+      } finally {
+        setUploadingCat(null);
+      }
+    }
+  };
+
+  return (
+    <div className="p-6">
+      <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+        <LayoutGrid size={24} className="text-brand-600"/> Category Management
+      </h2>
+      <p className="text-gray-500 mb-6">Manage images and display settings for your product categories. These images appear on the home screen.</p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {Object.values(Category).map((category) => (
+          <div key={category} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden group hover:shadow-md transition">
+            <div className="relative aspect-[4/3] bg-gray-100">
+               <img 
+                 src={categoryImages[category] || 'https://via.placeholder.com/600x400?text=No+Image'} 
+                 alt={category} 
+                 className="w-full h-full object-cover"
+                 onError={(e) => e.currentTarget.src = 'https://via.placeholder.com/600x400?text=Error'}
+               />
+               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                  <label className="cursor-pointer bg-white text-gray-900 px-4 py-2 rounded-lg font-bold text-sm hover:bg-brand-50 transition flex items-center gap-2">
+                    {uploadingCat === category ? (
+                      <span className="animate-pulse">Uploading...</span>
+                    ) : (
+                      <>
+                        <Upload size={16} /> Change Image
+                      </>
+                    )}
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={(e) => handleFileChange(category, e)}
+                      disabled={uploadingCat === category}
+                    />
+                  </label>
+               </div>
+            </div>
+            <div className="p-4">
+               <h3 className="font-bold text-gray-900 text-lg">{category}</h3>
+               <p className="text-xs text-gray-500 mt-1">
+                 {categoryImages[category] ? 'Custom Image Active' : 'Using Default Image'}
+               </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 const NotificationsView: React.FC = () => {
   const { settings, updateSettings, notificationLogs, sendTestNotification } = useStore();
@@ -215,7 +282,7 @@ const NotificationsView: React.FC = () => {
                            type="number" 
                            value={settings.notifications?.orderAmountThreshold} 
                            onChange={(e) => updateThreshold(Number(e.target.value))}
-                           className="w-32 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+                           className="w-32 p-3 bg-white text-gray-900 border border-gray-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
                         />
                         <p className="text-xs text-gray-500">Only notify admins if order total is greater than this amount. Set to 0 to notify for all orders.</p>
                      </div>
@@ -934,7 +1001,7 @@ const ProductsView: React.FC = () => {
           <input
             type="text"
             placeholder="Search products..."
-            className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none w-full"
+            className="pl-10 pr-4 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none w-full"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -1009,33 +1076,33 @@ const ProductsView: React.FC = () => {
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 animate-slide-in">
-            <h2 className="text-xl font-bold mb-4">{editingProduct ? 'Edit Product' : 'New Product'}</h2>
+            <h2 className="text-xl font-bold mb-4 bg-white text-gray-900">{editingProduct ? 'Edit Product' : 'New Product'}</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
-                <input required type="text" className="w-full p-2 border rounded-lg" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} />
+                <input required type="text" className="w-full p-3 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none transition-colors" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} />
               </div>
               
               {/* Price & Cost Section */}
               <div className="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Selling Price (EGP)</label>
-                  <input required type="number" className="w-full p-2 border rounded-lg font-bold text-brand-600" value={formData.price || 0} onChange={e => setFormData({...formData, price: Number(e.target.value)})} />
+                  <input required type="number" className="w-full p-3 bg-white text-gray-900 border border-gray-300 rounded-lg font-bold focus:ring-2 focus:ring-brand-500 outline-none transition-colors" value={formData.price || 0} onChange={e => setFormData({...formData, price: Number(e.target.value)})} />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Cost Price (EGP)</label>
-                  <input type="number" className="w-full p-2 border rounded-lg text-gray-600" value={formData.costPrice || 0} onChange={e => setFormData({...formData, costPrice: Number(e.target.value)})} placeholder="For profit calc" />
+                  <input type="number" className="w-full p-3 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none transition-colors" value={formData.costPrice || 0} onChange={e => setFormData({...formData, costPrice: Number(e.target.value)})} placeholder="For profit calc" />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Stock Quantity</label>
-                  <input required type="number" className="w-full p-2 border rounded-lg" value={formData.stock || 0} onChange={e => setFormData({...formData, stock: Number(e.target.value)})} />
+                  <input required type="number" className="w-full p-3 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none transition-colors" value={formData.stock || 0} onChange={e => setFormData({...formData, stock: Number(e.target.value)})} />
                 </div>
                  <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                  <select className="w-full p-2 border rounded-lg" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as Category})}>
+                  <select className="w-full p-3 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none transition-colors" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as Category})}>
                     {Object.values(Category).map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
@@ -1087,7 +1154,7 @@ const ProductsView: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                <textarea className="w-full p-2 border rounded-lg" rows={3} value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} />
+                <textarea className="w-full p-3 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none transition-colors" rows={3} value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} />
               </div>
               
               <div className="flex gap-3 pt-4">
@@ -1115,14 +1182,14 @@ const ProductsView: React.FC = () => {
             <div className="space-y-4">
               <div>
                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                 <select className="w-full p-2 border rounded-lg" value={bulkCategory} onChange={e => setBulkCategory(e.target.value)}>
+                 <select className="w-full p-3 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none transition-colors" value={bulkCategory} onChange={e => setBulkCategory(e.target.value)}>
                    <option value="All">All Categories</option>
                    {Object.values(Category).map(c => <option key={c} value={c}>{c}</option>)}
                  </select>
               </div>
               <div>
                  <label className="block text-sm font-medium text-gray-700 mb-1">Percentage Change (+/-)</label>
-                 <input type="number" className="w-full p-2 border rounded-lg" value={bulkPercent} onChange={e => setBulkPercent(Number(e.target.value))} placeholder="e.g. 10 for +10%, -5 for -5%" />
+                 <input type="number" className="w-full p-3 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none transition-colors" value={bulkPercent} onChange={e => setBulkPercent(Number(e.target.value))} placeholder="e.g. 10 for +10%, -5 for -5%" />
               </div>
             </div>
 
@@ -1288,15 +1355,15 @@ const CouponsView: React.FC = () => {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Code</label>
-                <input required type="text" placeholder="SUMMER20" className="w-full p-2 border rounded-lg uppercase" value={newCoupon.code || ''} onChange={e => setNewCoupon({...newCoupon, code: e.target.value})} />
+                <input required type="text" placeholder="SUMMER20" className="w-full p-3 bg-white text-gray-900 border border-gray-300 rounded-lg uppercase focus:ring-2 focus:ring-brand-500 outline-none" value={newCoupon.code || ''} onChange={e => setNewCoupon({...newCoupon, code: e.target.value})} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Discount %</label>
-                <input required type="number" max="100" className="w-full p-2 border rounded-lg" value={newCoupon.discountPercentage} onChange={e => setNewCoupon({...newCoupon, discountPercentage: Number(e.target.value)})} />
+                <input required type="number" max="100" className="w-full p-3 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" value={newCoupon.discountPercentage} onChange={e => setNewCoupon({...newCoupon, discountPercentage: Number(e.target.value)})} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
-                <input required type="date" className="w-full p-2 border rounded-lg" value={newCoupon.expiryDate || ''} onChange={e => setNewCoupon({...newCoupon, expiryDate: e.target.value})} />
+                <input required type="date" className="w-full p-3 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" value={newCoupon.expiryDate || ''} onChange={e => setNewCoupon({...newCoupon, expiryDate: e.target.value})} />
               </div>
               <button type="submit" className="w-full py-2 bg-brand-600 text-white rounded-lg font-bold mt-2">Create Coupon</button>
               <button type="button" onClick={() => setShowModal(false)} className="w-full py-2 border border-gray-200 rounded-lg text-gray-600">Cancel</button>
@@ -1384,7 +1451,7 @@ const SettingsView: React.FC = () => {
                     ...localSettings, 
                     shipping: { ...localSettings.shipping, flatRate: Number(e.target.value) }
                  })}
-                 className="w-full p-2 border rounded-lg"
+                 className="w-full p-3 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
                />
              </div>
              <div>
@@ -1396,7 +1463,7 @@ const SettingsView: React.FC = () => {
                     ...localSettings, 
                     shipping: { ...localSettings.shipping, freeShippingThreshold: Number(e.target.value) }
                  })}
-                 className="w-full p-2 border rounded-lg"
+                 className="w-full p-3 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
                />
              </div>
           </div>
@@ -1491,10 +1558,11 @@ export const Admin: React.FC<AdminProps> = ({ onBack }) => {
 
   const navItems: { id: View, label: string, icon: any }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'notifications', label: 'Notifications', icon: Bell }, // Added Notification Nav
+    { id: 'notifications', label: 'Notifications', icon: Bell }, 
     { id: 'assistant', label: 'Smart Assistant', icon: Brain },
     { id: 'supply_chain', label: 'Supply Chain', icon: Factory },
     { id: 'products', label: 'Products', icon: Package },
+    { id: 'categories', label: 'Categories', icon: LayoutGrid },
     { id: 'orders', label: 'Orders', icon: ShoppingCart },
     { id: 'users', label: 'Users', icon: Users },
     { id: 'coupons', label: 'Coupons', icon: Tag },
@@ -1544,6 +1612,7 @@ export const Admin: React.FC<AdminProps> = ({ onBack }) => {
           {currentView === 'notifications' && <NotificationsView />} 
           {currentView === 'supply_chain' && <SupplyChainView />}
           {currentView === 'products' && <ProductsView />}
+          {currentView === 'categories' && <CategoriesView />}
           {currentView === 'orders' && <OrdersView />}
           {currentView === 'users' && <UsersView />}
           {currentView === 'coupons' && <CouponsView />}
