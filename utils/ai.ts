@@ -1,9 +1,10 @@
 
-import { Product, AIChatResponse, Category } from '../types';
+import { Product, AIChatResponse, UserRole } from '../types';
 
 interface AIContext {
   lastProductId?: string;
   lastActionType?: string;
+  userRole?: UserRole;
 }
 
 // Heuristic to detect Arabic input
@@ -17,11 +18,10 @@ export const processUserMessage = (
 ): AIChatResponse => {
   const lowerMsg = message.toLowerCase();
   const isAr = isArabic(message);
+  const isStaff = context.userRole === 'staff';
   
   // 1. Safety Lock: Check for destructive intent
   if (lowerMsg.match(/delete|remove|destroy|wipe|drop/) && (lowerMsg.includes('user') || lowerMsg.includes('all') || lowerMsg.includes('database') || lowerMsg.includes('product'))) {
-     // Exception for "remove product 123" if specifically targeting one, usually implies deleting a product, which might be safe via UI but dangerous via bulk chat.
-     // But requirements say "Remove product 123" should fail/notify admin.
      return {
        human_en: "I cannot perform destructive actions like deleting users or products via chat. Please use the Settings or Product panel for critical management.",
        human_ar: "لا يمكنني تنفيذ إجراءات حذف للمستخدمين أو المنتجات عبر المحادثة. يرجى استخدام لوحة الإعدادات.",
@@ -31,7 +31,7 @@ export const processUserMessage = (
                target_admin: 'System Admin',
                message: 'Attempted destructive action blocked.'
            }
-       }, // Returning a harmless payload or null as per spec (null preferred for no-op)
+       }, 
        confidence: 1.0,
        explanation: "Safety Lock Triggered: Destructive keywords detected."
      };
@@ -58,19 +58,20 @@ export const processUserMessage = (
     }
   }
 
-  // Hallucination Check: If user is specifically asking about a product ID/Name that wasn't found
-  const specificProductRequest = lowerMsg.includes('product') || lowerMsg.includes('item') || lowerMsg.match(/id \d+/);
-  if (specificProductRequest && !targetProduct && !lowerMsg.includes('promotion') && !lowerMsg.includes('sale')) {
-       return {
-           human_en: "I couldn't find the product you are referring to. Could you check the ID or name?",
-           human_ar: "لم أتمكن من العثور على المنتج الذي تشير إليه. هل يمكنك التحقق من المعرف أو الاسم؟",
-           action_payload: null,
-           confidence: 0.4,
-           explanation: "Product entity not resolved."
-       };
+  // 3. STAFF RESTRICTIONS
+  // If staff tries to change price or delete
+  if (isStaff && (lowerMsg.includes('change price') || lowerMsg.includes('update price') || lowerMsg.includes('promotion') || lowerMsg.includes('discount'))) {
+      return {
+          human_en: "As a staff member, you don't have permission to change prices directly. I can notify the admin if you see an issue.",
+          human_ar: "بصفتك موظفاً، ليس لديك صلاحية تغيير الأسعار مباشرة. يمكنني إبلاغ المسؤول إذا لاحظت مشكلة.",
+          action_payload: null,
+          confidence: 1.0,
+          explanation: "Staff restriction enforcement.",
+          relatedProduct: targetProduct
+      };
   }
 
-  // 3. Intent Recognition & Response Generation
+  // 4. Intent Recognition & Response Generation
 
   // Intent: NOTIFY ADMIN (WhatsApp)
   if (lowerMsg.includes('notify') || lowerMsg.includes('message') || lowerMsg.includes('tell') || lowerMsg.includes('whatsapp') || lowerMsg.includes('رسالة') || lowerMsg.includes('تنبيه')) {
@@ -90,14 +91,15 @@ export const processUserMessage = (
           }
         },
         confidence: 0.95,
-        explanation: "Detected notification intent. Mapped to closest admin."
+        explanation: "Detected notification intent. Mapped to closest admin.",
+        relatedProduct: targetProduct
       };
   }
 
   // Intent: CHANGE PRICE / DISCOUNT
   if (lowerMsg.includes('price') || lowerMsg.includes('cost') || lowerMsg.includes('discount') || lowerMsg.includes('sale') || lowerMsg.includes('سعر') || lowerMsg.includes('خصم')) {
     
-    // Check if it's a query or an action
+    // Action Logic
     const isAction = lowerMsg.includes('change') || lowerMsg.includes('update') || lowerMsg.includes('set') || lowerMsg.includes('make') || lowerMsg.includes('apply') || lowerMsg.includes('تغيير') || lowerMsg.includes('تحديث') || lowerMsg.includes('عمل') || lowerMsg.includes('تطبيق');
     
     if (isAction && targetProduct) {
@@ -105,7 +107,6 @@ export const processUserMessage = (
        const numbers = lowerMsg.match(/\d+/g);
        let value = numbers ? parseInt(numbers[0]) : 0;
        
-       // Heuristic: If value is small (< 90) and keyword is 'discount'/'off', calculate new price
        let newPrice = value;
        if (lowerMsg.includes('discount') || lowerMsg.includes('off') || lowerMsg.includes('%') || lowerMsg.includes('خصم')) {
            if (value < 100) { // assume percentage
@@ -127,16 +128,18 @@ export const processUserMessage = (
            }
          },
          confidence: 0.9,
-         explanation: "Action intent 'Update Price' detected. Extracted value and target."
+         explanation: "Action intent 'Update Price' detected. Extracted value and target.",
+         relatedProduct: targetProduct
        };
     } else if (targetProduct) {
        // Just a query
        return {
-         human_en: `'${targetProduct.name}' is currently priced at ${targetProduct.price} EGP. Cost: ${targetProduct.costPrice || 0} EGP.`,
-         human_ar: `سعر '${targetProduct.name}' الحالي هو ${targetProduct.price} جنيه. التكلفة: ${targetProduct.costPrice || 0} جنيه.`,
+         human_en: `'${targetProduct.name}' is currently priced at ${targetProduct.price} EGP. Cost: ${targetProduct.costPrice || 0} EGP. Stock: ${targetProduct.stock}.`,
+         human_ar: `سعر '${targetProduct.name}' الحالي هو ${targetProduct.price} جنيه. التكلفة: ${targetProduct.costPrice || 0} جنيه. المخزون: ${targetProduct.stock}.`,
          action_payload: null,
          confidence: 1.0,
-         explanation: "Stock/Price query resolved from database."
+         explanation: "Stock/Price query resolved from database.",
+         relatedProduct: targetProduct
        };
     }
   }
@@ -158,8 +161,26 @@ export const processUserMessage = (
            }
          },
          confidence: 0.85,
-         explanation: "Restock intent detected."
+         explanation: "Restock intent detected.",
+         relatedProduct: targetProduct
        };
+     }
+  }
+
+  // Intent: REPLACEMENT (Staff Helper)
+  if (lowerMsg.includes('replacement') || lowerMsg.includes('alternative') || lowerMsg.includes('بديل')) {
+     if (targetProduct) {
+         const alternatives = products.filter(p => p.category === targetProduct?.category && p.id !== targetProduct.id && p.stock > 0).slice(0, 2);
+         const altNames = alternatives.map(p => p.name).join(', ');
+         
+         return {
+            human_en: `If '${targetProduct.name}' is out, try offering: ${altNames || 'No similar items in stock'}.`,
+            human_ar: `إذا كان '${targetProduct.name}' غير متوفر، جرب عرض: ${altNames || 'لا توجد بدائل متوفرة'}.`,
+            action_payload: null,
+            confidence: 0.9,
+            explanation: "Replacement suggestions provided.",
+            relatedProduct: targetProduct
+         };
      }
   }
 
@@ -171,13 +192,14 @@ export const processUserMessage = (
          human_ar: `لدينا ${targetProduct.stock} قطعة من '${targetProduct.name}'.`,
          action_payload: null,
          confidence: 1.0,
-         explanation: "Stock query resolved."
+         explanation: "Stock query resolved.",
+         relatedProduct: targetProduct
        };
      }
   }
 
-  // Intent: PROMOTION (Category Wide)
-  if (lowerMsg.includes('promotion') || lowerMsg.includes('flash sale') || lowerMsg.includes('weekend') || lowerMsg.includes('عرض')) {
+  // Intent: PROMOTION (Category Wide) - Admin Only
+  if (!isStaff && (lowerMsg.includes('promotion') || lowerMsg.includes('flash sale') || lowerMsg.includes('weekend') || lowerMsg.includes('عرض'))) {
       return {
         human_en: "I've drafted a 20% Flash Sale for Party Supplies.",
         human_ar: "قمت بتجهيز عرض خصم 20% على مستلزمات الحفلات.",

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Product, Category } from '../types';
+import { Product } from '../types';
 import { useStore } from '../context/StoreContext';
 import { Filter, Search } from 'lucide-react';
 
@@ -10,7 +10,7 @@ interface CatalogProps {
 }
 
 export const Catalog: React.FC<CatalogProps> = ({ initialCategory, onProductClick }) => {
-  const { products, user } = useStore();
+  const { products, user, categories } = useStore();
   const [activeCategory, setActiveCategory] = useState<string>(initialCategory || 'All');
   const [searchQuery, setSearchQuery] = useState('');
   const [priceSort, setPriceSort] = useState<'asc' | 'desc' | null>(null);
@@ -79,7 +79,7 @@ export const Catalog: React.FC<CatalogProps> = ({ initialCategory, onProductClic
             >
               All Items
             </button>
-            {Object.values(Category).map((cat) => (
+            {categories.map((cat) => (
               <button
                 key={cat}
                 onClick={() => setActiveCategory(cat)}

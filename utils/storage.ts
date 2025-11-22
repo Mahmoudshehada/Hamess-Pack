@@ -1,30 +1,37 @@
 
-
 const DB_NAME = 'HamessPackDB';
-const DB_VERSION = 2; // Incremented version for new store
+const DB_VERSION = 5; // Increment version to force schema update
 
 // Initialize Database
 export const initDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    request.onerror = () => {
-        console.error("IndexedDB Error:", request.error);
+    request.onerror = (event) => {
+        console.error("CRITICAL: Database failed to open:", request.error);
         reject(request.error);
     };
 
-    request.onsuccess = () => resolve(request.result);
+    request.onblocked = () => {
+       console.warn("Database upgrade blocked. Please close other tabs of this app.");
+    };
+
+    request.onsuccess = () => {
+        console.log("Database connection established successfully.");
+        resolve(request.result);
+    };
 
     request.onupgradeneeded = (event) => {
+      console.log("Upgrading Database Schema...");
       const db = (event.target as IDBOpenDBRequest).result;
       
-      // Products Store (for Inventory)
+      // Products Store (Metadata only, lightweight)
       if (!db.objectStoreNames.contains('products')) {
         const store = db.createObjectStore('products', { keyPath: 'id' });
         store.createIndex('category', 'category', { unique: false });
       }
       
-      // Images Store (for Binary Blobs/Base64)
+      // Images Store (Heavy data, isolated)
       if (!db.objectStoreNames.contains('images')) {
         const store = db.createObjectStore('images', { keyPath: 'id' });
         store.createIndex('productId', 'productId', { unique: false });
@@ -40,13 +47,18 @@ export const initDB = (): Promise<IDBDatabase> => {
         db.createObjectStore('coupons', { keyPath: 'id' });
       }
       
-      // Notification Logs Store
+      // System Notifications
+      if (!db.objectStoreNames.contains('system_notifications')) {
+        const store = db.createObjectStore('system_notifications', { keyPath: 'id' });
+        store.createIndex('type', 'type', { unique: false });
+      }
+      
+      // Notification Logs
       if (!db.objectStoreNames.contains('notification_logs')) {
         const store = db.createObjectStore('notification_logs', { keyPath: 'id' });
-        store.createIndex('orderId', 'orderId', { unique: false });
       }
 
-      // Global Settings/User (Key-Value Store)
+      // Global Settings
       if (!db.objectStoreNames.contains('globals')) {
         db.createObjectStore('globals', { keyPath: 'key' });
       }
@@ -67,9 +79,22 @@ const performTransaction = <T>(
       const store = tx.objectStore(storeName);
       const request = callback(store);
 
+      tx.oncomplete = () => {
+        // Transaction committed successfully
+      };
+
+      tx.onerror = () => {
+        console.error(`Transaction failed on ${storeName}:`, tx.error);
+        reject(tx.error);
+      };
+
       request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      request.onerror = () => {
+          console.error(`Request failed on ${storeName}:`, request.error);
+          // We don't reject here immediately, we let the transaction error handle it
+      };
     } catch (e) {
+      console.error("Database Error:", e);
       reject(e);
     }
   });
@@ -77,38 +102,40 @@ const performTransaction = <T>(
 
 // --- CRUD Operations ---
 
-// 1. Get All Items from a Store
 export const getAll = <T>(storeName: string): Promise<T[]> => {
+  console.log(`[DB Read] Fetching all from ${storeName}`);
   return performTransaction<T[]>(storeName, 'readonly', (store) => store.getAll());
 };
 
-// 2. Get Single Item
 export const getOne = <T>(storeName: string, id: string): Promise<T | undefined> => {
   return performTransaction<T>(storeName, 'readonly', (store) => store.get(id));
 };
 
-// 3. Put (Insert/Update) Item
 export const putItem = (storeName: string, item: any): Promise<string> => {
+  console.log(`[DB Write] Saving to ${storeName}`, item.id || 'item');
   return performTransaction<string>(storeName, 'readwrite', (store) => store.put(item));
 };
 
-// 4. Delete Item
 export const deleteItem = (storeName: string, id: string): Promise<void> => {
+  console.log(`[DB Delete] Removing from ${storeName}`, id);
   return performTransaction<void>(storeName, 'readwrite', (store) => store.delete(id));
 };
 
-// 5. Global Key-Value Helpers (for User, Settings)
 export const getGlobal = async <T>(key: string, fallback: T): Promise<T> => {
-  const result = await getOne<{key: string, value: T}>('globals', key);
-  return result ? result.value : fallback;
+  try {
+      const result = await getOne<{key: string, value: T}>('globals', key);
+      return result ? result.value : fallback;
+  } catch (e) {
+      return fallback;
+  }
 };
 
 export const setGlobal = async (key: string, value: any): Promise<void> => {
   await putItem('globals', { key, value });
 };
 
-// 6. Bulk Put (for Initial Migration)
 export const bulkPut = async (storeName: string, items: any[]): Promise<void> => {
+    console.log(`[DB Bulk] Saving ${items.length} items to ${storeName}`);
     const db = await initDB();
     return new Promise((resolve, reject) => {
         const tx = db.transaction(storeName, 'readwrite');
@@ -116,17 +143,22 @@ export const bulkPut = async (storeName: string, items: any[]): Promise<void> =>
         
         items.forEach(item => store.put(item));
         
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
+        tx.oncomplete = () => {
+            console.log(`[DB Bulk] Success: ${storeName}`);
+            resolve();
+        };
+        tx.onerror = () => {
+            console.error(`[DB Bulk] Failed: ${storeName}`, tx.error);
+            reject(tx.error);
+        };
     });
 };
 
-// 7. Clear Store
 export const clearStore = async (storeName: string): Promise<void> => {
+  console.warn(`[DB Clear] Wiping ${storeName}`);
   return performTransaction<void>(storeName, 'readwrite', (store) => store.clear());
 };
 
-// 8. Estimation
 export const estimateUsage = async () => {
     if (navigator.storage && navigator.storage.estimate) {
         return await navigator.storage.estimate();

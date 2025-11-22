@@ -1,62 +1,62 @@
 
-
 import React, { useState } from 'react';
 import { useStore } from '../context/StoreContext';
-import { ArrowRight, Smartphone, Lock, User, Mail } from 'lucide-react';
+import { ArrowRight, Smartphone, Lock, User, Mail, UserCircle } from 'lucide-react';
 
 export const Auth: React.FC = () => {
-  const { login } = useStore();
-  const [phone, setPhone] = useState('');
-  const [otp, setOtp] = useState('');
+  const { login, users } = useStore();
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   
-  const [step, setStep] = useState<'phone' | 'otp' | 'register' | 'password'>('phone');
+  const [step, setStep] = useState<'identifier' | 'password' | 'otp' | 'register'>('identifier');
 
-  const handleSendOtp = (e: React.FormEvent) => {
+  const handleCheckIdentifier = (e: React.FormEvent) => {
     e.preventDefault();
-    // Check for admins - Redirect to Password Flow
-    if (phone === '01066665153' || phone === '01010340487') {
-      setStep('password');
-      return;
+    if (!identifier) return;
+
+    // Check if user exists by username or phone
+    const userExists = users.find(u => 
+        u.phone === identifier || 
+        (u.username && u.username.toLowerCase() === identifier.toLowerCase())
+    );
+
+    if (userExists) {
+        // If existing user, ask for password
+        setStep('password');
+    } else {
+        // If not found, check if it looks like a phone number for new registration
+        if (identifier.match(/^01[0-9]{9}$/)) {
+            setStep('otp');
+        } else {
+            alert("User not found. Please use a valid phone number to register.");
+        }
     }
-    if (phone.length > 8) setStep('otp');
   };
 
-  const handleVerify = (e: React.FormEvent) => {
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const success = login(identifier, password);
+    if (!success) {
+       // Store handles the notification
+       setPassword('');
+    }
+  };
+
+  const handleVerifyOtp = (e: React.FormEvent) => {
     e.preventDefault();
     if (otp.length === 4) {
-      // Existing demo user for quick login
-      if (phone === '0000') {
-        login(phone);
-      } else {
-        // New users go to registration
         setStep('register');
-      }
-    }
-  };
-
-  const handleVerifyPassword = (e: React.FormEvent) => {
-    e.preventDefault();
-    // In a real app, this would verify the hash on the server.
-    // Here we simulate the check against the known credentials for the specific admin users.
-    const validAdmins = {
-      '01066665153': '66666666', // Walid El Sheikh
-      '01010340487': '77779999'  // Mahmoud Shehada
-    };
-
-    if (validAdmins[phone as keyof typeof validAdmins] === password) {
-       login(phone);
-    } else {
-       alert("Invalid Password");
     }
   };
 
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
     if (name && email) {
-      login(phone, name, email);
+      login(identifier, undefined, name, email);
     }
   };
 
@@ -76,23 +76,23 @@ export const Auth: React.FC = () => {
         </div>
 
         <div className="bg-white text-gray-800 rounded-2xl shadow-2xl p-6 animate-fade-in">
-          {step === 'phone' && (
-            <form onSubmit={handleSendOtp}>
-              <h2 className="text-xl font-bold mb-4">Welcome</h2>
-              <div className="mb-4">
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone Number</label>
+          
+          {step === 'identifier' && (
+            <form onSubmit={handleCheckIdentifier}>
+              <h2 className="text-xl font-bold mb-4">Login</h2>
+              <div className="mb-6">
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Username or Phone</label>
                 <div className="relative">
-                  <Smartphone className="absolute left-3 top-3.5 text-gray-400" size={20} />
+                  <UserCircle className="absolute left-3 top-3.5 text-gray-400" size={20} />
                   <input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    type="text"
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
                     className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none transition"
-                    placeholder="01xxxxxxxxx"
+                    placeholder="e.g. staff01 or 010xxxx..."
                     autoFocus
                   />
                 </div>
-                <p className="text-xs text-gray-400 mt-2">Use '0000' for Demo.</p>
               </div>
               <button 
                 type="submit"
@@ -104,9 +104,9 @@ export const Auth: React.FC = () => {
           )}
 
           {step === 'password' && (
-            <form onSubmit={handleVerifyPassword}>
-              <h2 className="text-xl font-bold mb-4">Admin Login</h2>
-              <p className="text-sm text-gray-500 mb-4">Welcome back, {phone === '01066665153' ? 'Walid' : 'Mahmoud'}.</p>
+            <form onSubmit={handleLogin}>
+              <h2 className="text-xl font-bold mb-2">Welcome Back</h2>
+              <p className="text-sm text-gray-500 mb-4">Enter password for <b>{identifier}</b></p>
               <div className="mb-6">
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Password</label>
                 <div className="relative">
@@ -129,18 +129,18 @@ export const Auth: React.FC = () => {
               </button>
               <button 
                 type="button" 
-                onClick={() => setStep('phone')}
+                onClick={() => setStep('identifier')}
                 className="w-full mt-3 text-sm text-gray-500 hover:text-gray-700"
               >
-                Change Phone Number
+                Back
               </button>
             </form>
           )}
 
           {step === 'otp' && (
-            <form onSubmit={handleVerify}>
-              <h2 className="text-xl font-bold mb-4">Enter OTP</h2>
-              <p className="text-sm text-gray-500 mb-4">We sent a code to {phone}</p>
+            <form onSubmit={handleVerifyOtp}>
+              <h2 className="text-xl font-bold mb-4">Verify Phone</h2>
+              <p className="text-sm text-gray-500 mb-4">We sent a code to {identifier}</p>
               <div className="mb-6">
                 <div className="relative">
                   <Lock className="absolute left-3 top-3.5 text-gray-400" size={20} />
@@ -154,6 +154,7 @@ export const Auth: React.FC = () => {
                     autoFocus
                   />
                 </div>
+                <p className="text-xs text-gray-400 mt-2">Any 4 digits for demo (e.g. 1234)</p>
               </div>
               <button 
                 type="submit"
@@ -163,7 +164,7 @@ export const Auth: React.FC = () => {
               </button>
               <button 
                 type="button" 
-                onClick={() => setStep('phone')}
+                onClick={() => setStep('identifier')}
                 className="w-full mt-3 text-sm text-gray-500 hover:text-gray-700"
               >
                 Change Phone Number

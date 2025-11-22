@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, ReactNode, useMemo, useEffect, useCallback } from 'react';
-import { CartItem, Product, Order, User, Coupon, AppSettings, PaymentMethod, Category, StoredImage, DeliveryLocation, Address, NotificationLog } from '../types';
+import { CartItem, Product, Order, User, Coupon, AppSettings, PaymentMethod, CategoryEnum, StoredImage, DeliveryLocation, Address, NotificationLog, UserRole, SystemNotification, NotificationType } from '../types';
 import * as db from '../utils/storage';
 import { CATEGORY_IMAGES, MOCK_PRODUCTS } from '../constants';
 
@@ -13,7 +13,7 @@ export interface Notification {
 interface StoreContextType {
   isLoading: boolean;
   user: User | null;
-  login: (phone: string, name?: string, email?: string) => void;
+  login: (identifier: string, password?: string, name?: string, email?: string) => boolean;
   logout: () => void;
   updateUser: (updates: Partial<User>) => void;
   changeLanguage: (lang: 'en' | 'ar') => void;
@@ -29,6 +29,12 @@ interface StoreContextType {
   deleteProduct: (id: string) => Promise<void>;
   bulkUpdatePrices: (percentage: number, category?: string) => Promise<void>;
   
+  // Categories
+  categories: string[];
+  addCategory: (name: string) => Promise<void>;
+  renameCategory: (oldName: string, newName: string) => Promise<void>;
+  deleteCategory: (name: string) => Promise<void>;
+
   // Image Handling
   uploadProductImage: (file: File, productId: string) => Promise<StoredImage>;
   uploadUserAvatar: (file: File) => Promise<string>;
@@ -53,17 +59,172 @@ interface StoreContextType {
   deleteCoupon: (id: string) => void;
   settings: AppSettings;
   updateSettings: (settings: AppSettings) => void;
-  notificationLogs: NotificationLog[];
-  sendTestNotification: () => void;
   
-  // System
+  // Notification Center
+  systemNotifications: SystemNotification[];
+  notificationLogs: NotificationLog[];
+  createSystemNotification: (type: NotificationType, title: string, message: string, priority?: 'high'|'normal'|'low', data?: any) => Promise<SystemNotification>;
+  markNotificationRead: (id: string) => void;
+  deleteSystemNotification: (id: string) => void;
+  clearAllNotifications: () => void;
+  
+  // System Toasts
   notifications: Notification[];
   addNotification: (message: string, type: 'success' | 'info' | 'error') => void;
   removeNotification: (id: string) => void;
   resetSystem: () => Promise<void>;
+  exportSystemData: () => Promise<void>;
+  importSystemData: (file: File) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
+
+// --- USERS SEED DATA ---
+const SEED_USERS: User[] = [
+  // --- Admins (2) ---
+  { 
+    id: 'admin-1', 
+    name: 'Walid El Sheikh', 
+    username: 'walid',
+    phone: '01066665153', 
+    email: 'walidelsheikh011111@gmail.com', 
+    role: 'admin',
+    isAdmin: true, 
+    password: '0000', 
+    addresses: [], 
+    language: 'ar', 
+    notificationsEnabled: true, 
+    country: 'Egypt'
+  },
+  { 
+    id: 'admin-2', 
+    name: 'Mahmoud Shehada', 
+    username: 'mahmoud',
+    phone: '01010340487', 
+    email: 'msbas999@gmail.com', 
+    role: 'admin',
+    isAdmin: true, 
+    password: '0000', 
+    addresses: [], 
+    language: 'en', 
+    notificationsEnabled: true, 
+    country: 'Egypt'
+  },
+  // --- Staff (3) ---
+  { 
+    id: 'staff-1', 
+    name: 'Staff Member 1', 
+    username: 'staff01',
+    phone: '01011111111', 
+    email: 'staff1@hamesspack.com', 
+    role: 'staff', 
+    isAdmin: true, 
+    password: '1111', 
+    addresses: [], 
+    language: 'en', 
+    notificationsEnabled: true, 
+    country: 'Egypt' 
+  },
+  { 
+    id: 'staff-2', 
+    name: 'Staff Member 2', 
+    username: 'staff02',
+    phone: '01022222222', 
+    email: 'staff2@hamesspack.com', 
+    role: 'staff', 
+    isAdmin: true, 
+    password: '2222', 
+    addresses: [], 
+    language: 'en', 
+    notificationsEnabled: true, 
+    country: 'Egypt' 
+  },
+  { 
+    id: 'staff-3', 
+    name: 'Staff Member 3', 
+    username: 'staff03',
+    phone: '01033333333', 
+    email: 'staff3@hamesspack.com', 
+    role: 'staff', 
+    isAdmin: true, 
+    password: '3333', 
+    addresses: [], 
+    language: 'en', 
+    notificationsEnabled: true, 
+    country: 'Egypt' 
+  },
+  // --- Customers (5) ---
+  { 
+    id: 'cust-1', 
+    name: 'Sarah Ahmed', 
+    username: 'sarah01',
+    phone: '01200000001', 
+    email: 'sarah@example.com', 
+    role: 'customer', 
+    isAdmin: false, 
+    password: '1234',
+    addresses: [], 
+    language: 'en', 
+    notificationsEnabled: true, 
+    country: 'Egypt' 
+  },
+  { 
+    id: 'cust-2', 
+    name: 'Mohamed Ali', 
+    username: 'mohamed02',
+    phone: '01200000002', 
+    email: 'mohamed@example.com', 
+    role: 'customer', 
+    isAdmin: false, 
+    password: '1234',
+    addresses: [], 
+    language: 'ar', 
+    notificationsEnabled: true, 
+    country: 'Egypt' 
+  },
+  { 
+    id: 'cust-3', 
+    name: 'Laila Hassan', 
+    username: 'laila03',
+    phone: '01200000003', 
+    email: 'laila@example.com', 
+    role: 'customer', 
+    isAdmin: false, 
+    password: '1234',
+    addresses: [], 
+    language: 'en', 
+    notificationsEnabled: true, 
+    country: 'Egypt' 
+  },
+  { 
+    id: 'cust-4', 
+    name: 'Omar Youssef', 
+    username: 'omar04',
+    phone: '01200000004', 
+    email: 'omar@example.com', 
+    role: 'customer', 
+    isAdmin: false, 
+    password: '1234',
+    addresses: [], 
+    language: 'ar', 
+    notificationsEnabled: true, 
+    country: 'Egypt' 
+  },
+  { 
+    id: 'cust-5', 
+    name: 'Nour Ezzat', 
+    username: 'nour05',
+    phone: '01200000005', 
+    email: 'nour@example.com', 
+    role: 'customer', 
+    isAdmin: false, 
+    password: '1234',
+    addresses: [], 
+    language: 'en', 
+    notificationsEnabled: true, 
+    country: 'Egypt' 
+  },
+];
 
 // Helper: Image Compression
 const compressImage = (file: File, maxWidth = 600, maxHeight = 600, quality = 0.7): Promise<string> => {
@@ -94,10 +255,8 @@ const compressImage = (file: File, maxWidth = 600, maxHeight = 600, quality = 0.
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (ctx) {
-            // Fill white background for transparency handling (important for PNG -> JPEG)
             ctx.fillStyle = '#FFFFFF';
             ctx.fillRect(0, 0, width, height);
-            
             ctx.drawImage(img, 0, 0, width, height);
             resolve(canvas.toDataURL('image/jpeg', quality)); 
         } else {
@@ -110,6 +269,50 @@ const compressImage = (file: File, maxWidth = 600, maxHeight = 600, quality = 0.
   });
 };
 
+// Initial Default Settings
+const DEFAULT_SETTINGS: AppSettings = {
+  general: {
+    brandName: 'Hamess Pack',
+    contactEmail: 'support@hamesspack.com',
+    currency: 'EGP',
+    language: 'en'
+  },
+  shipping: {
+    flatRate: 50,
+    freeShippingThreshold: 1000,
+    deliveryAreas: ['Cairo', 'Giza', 'Alexandria']
+  },
+  paymentGateways: {
+    paymob: true,
+    fawry: true,
+    stripe: false
+  },
+  notifications: {
+    enableWhatsApp: true,
+    enablePush: true,
+    enableEmailDigest: false,
+    orderAmountThreshold: 0,
+    admins: [
+      { name: 'Walid El Sheikh', phone: '01066665153', language: 'ar', channels: ['WHATSAPP', 'IN_APP'] },
+      { name: 'Mahmoud Shehada', phone: '01010340487', language: 'en', channels: ['WHATSAPP', 'IN_APP'] }
+    ]
+  },
+  ai: {
+    enabled: true,
+    autoPricing: false,
+    autoReorder: true,
+    tone: 'Professional'
+  },
+  security: {
+    sessionTimeout: 30,
+    requireComplexPassword: true
+  },
+  backup: {
+    lastBackupDate: null,
+    autoBackup: true
+  }
+};
+
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -119,28 +322,15 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [rawProducts, setRawProducts] = useState<Product[]>([]);
   const [storedImages, setStoredImages] = useState<StoredImage[]>([]);
   const [categoryImages, setCategoryImages] = useState<Record<string, string>>(CATEGORY_IMAGES);
+  const [categories, setCategories] = useState<string[]>(Object.values(CategoryEnum)); // Dynamic Categories
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
+  const [systemNotifications, setSystemNotifications] = useState<SystemNotification[]>([]);
   
-  const [settings, setSettings] = useState<AppSettings>({
-      brandColor: '#512D6D',
-      currency: 'EGP',
-      paymentGateways: { paymob: true, fawry: true, stripe: false },
-      shipping: { flatRate: 50, freeShippingThreshold: 1000 },
-      notifications: {
-        enableWhatsApp: true,
-        enablePush: true,
-        enableEmailDigest: false,
-        orderAmountThreshold: 0,
-        admins: [
-          { name: 'Walid El Sheikh', phone: '+201066665153', language: 'ar', channels: ['WHATSAPP', 'IN_APP'] },
-          { name: 'Mahmoud Shehada', phone: '+201010340487', language: 'en', channels: ['WHATSAPP', 'IN_APP'] }
-        ]
-      }
-  });
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   const addNotification = useCallback((message: string, type: 'success' | 'info' | 'error') => {
     const id = Date.now().toString();
@@ -155,25 +345,31 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // --- Critical Persistence Loader ---
   const loadDataFromDB = async () => {
     try {
-      // 1. Load Products
-      let dbProducts = await db.getAll<Product>('products');
-      
-      // Seed if empty - USING THE NEW HARDCODED CONSTANTS AS SOURCE OF TRUTH
-      if (!dbProducts || dbProducts.length === 0) {
-        console.log("Initializing Product Database from Permanent Constants...");
-        await db.bulkPut('products', MOCK_PRODUCTS);
-        dbProducts = MOCK_PRODUCTS;
-      }
-      setRawProducts(dbProducts || []);
+      const isInitialized = localStorage.getItem('hp_system_init');
 
-      // 2. Load Images
+      // 1. Load Products & Images
+      let dbProducts = await db.getAll<Product>('products');
       const dbImages = await db.getAll<StoredImage>('images');
+      
+      // Initial Seed Logic: Only runs ONCE.
+      if (!isInitialized) {
+        console.log("System First Run: Seeding Mock Data...");
+        if (!dbProducts || dbProducts.length === 0) {
+            await db.bulkPut('products', MOCK_PRODUCTS);
+            dbProducts = MOCK_PRODUCTS;
+        }
+        localStorage.setItem('hp_system_init', 'true');
+      }
+
+      setRawProducts(dbProducts || []);
       setStoredImages(dbImages || []);
 
-      // 3. Load Category Images (Global Map)
+      // 3. Load Categories & Category Images
       const dbCategoryImages = await db.getGlobal<Record<string, string>>('hp_category_images', {});
-      // Merge with defaults (Constants are fallback, DB overwrites)
       setCategoryImages({ ...CATEGORY_IMAGES, ...dbCategoryImages });
+      
+      const dbCategories = await db.getGlobal<string[]>('hp_categories', Object.values(CategoryEnum));
+      setCategories(dbCategories);
 
       // 4. Load Orders
       const dbOrders = await db.getAll<Order>('orders');
@@ -186,37 +382,41 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const dbLogs = await db.getAll<NotificationLog>('notification_logs');
       setNotificationLogs((dbLogs || []).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
 
+      const dbSysNotifs = await db.getAll<SystemNotification>('system_notifications');
+      setSystemNotifications((dbSysNotifs || []).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+
       // 6. Load Globals
       const loadedUser = await db.getGlobal<User | null>('hp_user', null);
       setUser(loadedUser);
 
-      const loadedSettings = await db.getGlobal<AppSettings>('hp_settings', settings);
+      const loadedSettings = await db.getGlobal<AppSettings>('hp_settings', DEFAULT_SETTINGS);
       setSettings(prev => ({ 
           ...prev, 
           ...loadedSettings,
-          notifications: { ...prev.notifications, ...loadedSettings.notifications }
+          general: { ...prev.general, ...loadedSettings.general },
+          shipping: { ...prev.shipping, ...loadedSettings.shipping },
+          notifications: { ...prev.notifications, ...loadedSettings.notifications },
+          ai: { ...prev.ai, ...loadedSettings.ai },
+          security: { ...prev.security, ...loadedSettings.security },
+          backup: { ...prev.backup, ...loadedSettings.backup }
       }));
 
       const loadedCart = await db.getGlobal<CartItem[]>('hp_cart', []);
       setCart(loadedCart);
       
-      const loadedUsers = await db.getGlobal<User[]>('hp_users', [
-        { 
-          id: '1', name: 'Walid El Sheikh', phone: '01066665153', email: 'walidelsheikh011111@gmail.com', 
-          isAdmin: true, password: '$2b$10$ExampleHashForWalid666', addresses: [], language: 'en', 
-          notificationsEnabled: true, country: 'Egypt', birthday: ''
-        },
-        { 
-          id: '2', name: 'Mahmoud Shehada', phone: '01010340487', email: 'msbas999@gmail.com', 
-          isAdmin: true, password: '$2b$10$ExampleHashForMahmoud77', addresses: [], language: 'en', 
-          notificationsEnabled: true, country: 'Egypt', birthday: ''
-        }
-      ]);
-      setUsers(loadedUsers);
+      // 7. Load Users - Merge with SEED Data
+      let loadedUsers = await db.getGlobal<User[]>('hp_users', []);
+      const nonSeedUsers = loadedUsers.filter(u => !SEED_USERS.some(s => s.phone === u.phone));
+      const mergedUsers = [...SEED_USERS, ...nonSeedUsers];
+      
+      if (JSON.stringify(mergedUsers) !== JSON.stringify(loadedUsers)) {
+          await db.setGlobal('hp_users', mergedUsers);
+      }
+      setUsers(mergedUsers);
 
     } catch (error) {
       console.error("CRITICAL: Database Load Failed:", error);
-      addNotification("Database Error. Please refresh.", "error");
+      addNotification("Database Error. Data may be unavailable.", "error");
     } finally {
       setIsLoading(false);
     }
@@ -233,61 +433,170 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   useEffect(() => { if(!isLoading) db.setGlobal('hp_users', users); }, [users, isLoading]);
 
   // --- Actions ---
-
   const resetSystem = async () => {
-    if(!window.confirm("WARNING: This will wipe all data and restore the 22 permanent products. Are you sure?")) return;
+    if(!window.confirm("WARNING: This will wipe ALL data. Are you sure?")) return;
     try {
       await db.clearStore('products');
       await db.clearStore('images');
       await db.clearStore('orders');
       await db.clearStore('notification_logs');
+      await db.clearStore('system_notifications');
       await db.deleteItem('globals', 'hp_category_images');
+      await db.deleteItem('globals', 'hp_categories');
       
-      // Reset to MOCK_PRODUCTS (Permanent list)
+      // Re-seed
       await db.bulkPut('products', MOCK_PRODUCTS);
       
       setRawProducts(MOCK_PRODUCTS);
       setStoredImages([]);
       setCategoryImages(CATEGORY_IMAGES); 
+      setCategories(Object.values(CategoryEnum));
       setOrders([]);
       setNotificationLogs([]);
+      setSystemNotifications([]);
+      localStorage.removeItem('hp_system_init');
       
       addNotification('System Reset to Factory Defaults.', 'success');
-      setTimeout(() => window.location.reload(), 1000);
     } catch (e) {
-      console.error("Reset failed", e);
       addNotification('Reset failed.', 'error');
     }
   };
+  
+  const exportSystemData = async () => {
+      try {
+          const data = {
+              timestamp: new Date().toISOString(),
+              version: '1.0',
+              products: await db.getAll('products'),
+              orders: await db.getAll('orders'),
+              users: await db.getAll('hp_users') || users,
+              settings: settings,
+              categories: await db.getGlobal('hp_categories', categories)
+          };
+          
+          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `hamesspack_backup_${new Date().toISOString().split('T')[0]}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          
+          setSettings(prev => ({ ...prev, backup: { ...prev.backup, lastBackupDate: new Date().toISOString() } }));
+          addNotification('System backup downloaded successfully.', 'success');
+      } catch (e) {
+          console.error(e);
+          addNotification('Export failed.', 'error');
+      }
+  };
+  
+  const importSystemData = async (file: File) => {
+      try {
+          const reader = new FileReader();
+          reader.onload = async (e) => {
+              const text = e.target?.result as string;
+              const data = JSON.parse(text);
+              
+              if (!data.products || !data.orders) {
+                  throw new Error("Invalid backup file format");
+              }
+              
+              if(!window.confirm(`Restore backup from ${data.timestamp}? This will overwrite current data.`)) return;
+              
+              setIsLoading(true);
+              
+              // Wipe current
+              await db.clearStore('products');
+              await db.clearStore('orders');
+              
+              // Restore
+              if (data.products) {
+                 await db.bulkPut('products', data.products);
+                 setRawProducts(data.products);
+              }
+              if (data.orders) {
+                 await db.bulkPut('orders', data.orders);
+                 setOrders(data.orders);
+              }
+              if (data.users) {
+                 await db.setGlobal('hp_users', data.users);
+                 setUsers(data.users);
+              }
+              if (data.settings) {
+                 setSettings(data.settings);
+              }
+              if (data.categories) {
+                  setCategories(data.categories);
+                  await db.setGlobal('hp_categories', data.categories);
+              }
+              
+              setIsLoading(false);
+              addNotification('System restored successfully.', 'success');
+          };
+          reader.readAsText(file);
+      } catch (e) {
+          addNotification('Import failed. Invalid file.', 'error');
+      }
+  };
 
-  // ... [User/Address/Auth Logic remains unchanged] ...
-  const login = (phone: string, name?: string, email?: string) => {
-    const existingUser = users.find(u => u.phone === phone);
+  const login = (identifier: string, password?: string, name?: string, email?: string): boolean => {
+    const existingUser = users.find(u => 
+      u.phone === identifier || 
+      (u.username && u.username.toLowerCase() === identifier.toLowerCase())
+    );
+
     if (existingUser) {
-      setUser(existingUser);
-      addNotification(existingUser.language === 'ar' ? `مرحباً بك ${existingUser.name}` : `Welcome back, ${existingUser.name}!`, 'success');
-    } else if (name && email) {
+       if (existingUser.password) {
+           if (password === existingUser.password) {
+               setUser(existingUser);
+               addNotification(`Welcome back, ${existingUser.name}!`, 'success');
+               return true;
+           } else {
+               addNotification('Incorrect Password', 'error');
+               return false;
+           }
+       } else {
+           setUser(existingUser);
+           addNotification(`Welcome back, ${existingUser.name}!`, 'success');
+           return true;
+       }
+    } 
+    
+    if (name && email) {
       const newUser: User = {
         id: Date.now().toString(),
-        name, email, phone,
+        name, email, 
+        phone: identifier,
+        role: 'customer',
         isAdmin: false, addresses: [], language: 'en',
-        notificationsEnabled: true, country: 'Egypt', birthday: ''
+        notificationsEnabled: true, country: 'Egypt',
+        username: email.split('@')[0], 
+        password: '1234'
       };
       setUsers(prev => [...prev, newUser]);
       setUser(newUser);
       addNotification('Account created successfully!', 'success');
+      return true;
     }
+    return false;
   };
 
   const logout = () => {
     setUser(null);
     setCart([]);
     addNotification('Logged out successfully', 'info');
-    document.documentElement.dir = 'ltr';
   };
 
   const toggleUserAdmin = (id: string) => {
-    setUsers(prev => prev.map(u => u.id === id ? { ...u, isAdmin: !u.isAdmin } : u));
+    setUsers(prev => prev.map(u => {
+       if (u.id === id) {
+         const newRole: UserRole = u.role === 'customer' ? 'staff' : 'customer';
+         return { ...u, role: newRole, isAdmin: newRole !== 'customer' };
+       }
+       return u;
+    }));
     addNotification('User role updated', 'success');
   };
 
@@ -304,7 +613,6 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     updateUser({ language: lang });
   };
 
-  // Address
   const addAddress = async (addressData: Omit<Address, 'id'>) => {
     if (!user) return;
     const newAddress: Address = {
@@ -325,32 +633,27 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     addNotification('Address removed', 'info');
   };
 
-  // --- Image Logic ---
   const uploadProductImage = async (file: File, productId: string): Promise<StoredImage> => {
     try {
       const base64Data = await compressImage(file, 800, 800, 0.7);
-      const ext = file.name.split('.').pop() || 'jpg';
-      const timestamp = Date.now();
-      
       const newImage: StoredImage = {
-        id: `img_${timestamp}_${Math.random().toString(36).substr(2, 9)}`,
+        id: `img_${Date.now()}`,
         productId: productId,
-        path: '', // We don't rely on path for display anymore
+        path: '', 
         data: base64Data,
         uploadDate: new Date().toISOString(),
         mimeType: 'image/jpeg',
         status: 'active'
       };
-
+      
+      // Save heavy image to 'images' store
       await db.putItem('images', newImage);
       
-      // Immediately reload images from DB to ensure consistency
-      const allImages = await db.getAll<StoredImage>('images');
-      setStoredImages(allImages);
+      // Update local state
+      setStoredImages(prev => [...prev.filter(img => img.productId !== productId), newImage]);
       
       return newImage;
     } catch (error) {
-      console.error("Failed to process image", error);
       addNotification('Failed to upload image.', 'error');
       throw error;
     }
@@ -370,14 +673,9 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const uploadCategoryImage = async (category: string, file: File): Promise<string> => {
     try {
       const base64Data = await compressImage(file, 600, 600, 0.8);
-      
-      // Update State
       const newMap = { ...categoryImages, [category]: base64Data };
       setCategoryImages(newMap);
-      
-      // Persist to DB (Global Key)
       await db.setGlobal('hp_category_images', newMap);
-      
       addNotification('Category image updated', 'success');
       return base64Data;
     } catch (e) {
@@ -386,63 +684,81 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
-  // --- Product Logic ---
-  
-  // Memoized Product list that attaches images dynamically
+  // --- CATEGORY MANAGEMENT ---
+  const addCategory = async (name: string) => {
+      if (categories.includes(name)) {
+          addNotification('Category already exists', 'error');
+          return;
+      }
+      const newCats = [...categories, name];
+      setCategories(newCats);
+      await db.setGlobal('hp_categories', newCats);
+      addNotification('Category added', 'success');
+  };
+
+  const renameCategory = async (oldName: string, newName: string) => {
+      if (categories.includes(newName)) {
+          addNotification('Category name already exists', 'error');
+          return;
+      }
+      const newCats = categories.map(c => c === oldName ? newName : c);
+      setCategories(newCats);
+      await db.setGlobal('hp_categories', newCats);
+
+      const updatedProducts = rawProducts.map(p => p.category === oldName ? { ...p, category: newName } : p);
+      setRawProducts(updatedProducts);
+      for(const p of updatedProducts) {
+          if (p.category === newName) await db.putItem('products', p);
+      }
+
+      if (categoryImages[oldName]) {
+          const newMap = { ...categoryImages, [newName]: categoryImages[oldName] };
+          delete newMap[oldName];
+          setCategoryImages(newMap);
+          await db.setGlobal('hp_category_images', newMap);
+      }
+      addNotification('Category renamed', 'success');
+  };
+
+  const deleteCategory = async (name: string) => {
+      const newCats = categories.filter(c => c !== name);
+      setCategories(newCats);
+      await db.setGlobal('hp_categories', newCats);
+      addNotification('Category deleted', 'info');
+  };
+
+  // --- Product Logic (View Construction) ---
   const products = useMemo(() => {
     return rawProducts.map(product => {
-      // If product has an imageId, try to find it in the loaded images
+      // If product has a linked imageId, try to find it in the stored images
       if (product.imageId) {
-        const storedImg = storedImages.find(img => img.id === product.imageId && img.status === 'active');
-        if (storedImg) {
-          return { ...product, image: storedImg.data };
-        }
+        const storedImg = storedImages.find(img => img.id === product.imageId);
+        if (storedImg) return { ...product, image: storedImg.data };
       }
-      // Fallback if no imageId or image not found
-      if (product.image && product.image.startsWith('data:')) return product; // Already has data
-      if (product.image) return product; // Has a URL
-      
+      // Fallback for legacy products or those with direct base64 (not recommended)
+      if (product.image) return product;
       return { ...product, image: 'https://via.placeholder.com/400?text=No+Image' };
     });
   }, [rawProducts, storedImages]);
 
   const addProduct = async (product: Product) => {
     try {
-        // 1. Prepare Product (Ensure no huge base64 strings in the 'image' field if imageId exists)
-        const productToSave = { ...product };
-        if (productToSave.imageId && productToSave.image && productToSave.image.startsWith('data:')) {
-            productToSave.image = ''; // Clear the heavy string, we rely on imageId
-        }
-
-        // 2. Save to DB
-        await db.putItem('products', productToSave);
-        
-        // 3. Force Reload from DB to guarantee State matches Disk
-        const dbProducts = await db.getAll<Product>('products');
-        setRawProducts(dbProducts);
-        
-        addNotification('Product saved securely.', 'success');
+        await db.putItem('products', product);
+        setRawProducts(prev => [...prev, product]);
+        addNotification('Product saved successfully.', 'success');
     } catch (e) {
-        console.error("Add Product Error", e);
-        addNotification('Failed to save product. Storage might be full.', 'error');
+        console.error(e);
+        addNotification('Critical Error: Failed to save product to DB.', 'error');
     }
   };
 
   const updateProduct = async (product: Product) => {
     try {
-        const productToSave = { ...product };
-         // Prevent double storage of base64 in the main product object if we have an ID
-        if (productToSave.imageId && productToSave.image && productToSave.image.startsWith('data:')) {
-             productToSave.image = ''; 
-        }
-
-        await db.putItem('products', productToSave);
-        
-        // Update State Locally for speed, but DB is source of truth
-        setRawProducts(prev => prev.map(p => p.id === product.id ? productToSave : p));
-        addNotification('Product updated', 'success');
+        await db.putItem('products', product);
+        setRawProducts(prev => prev.map(p => p.id === product.id ? product : p));
+        addNotification('Product updated successfully', 'success');
     } catch (e) {
-        addNotification('Failed to update product', 'error');
+        addNotification('Critical Error: Failed to update product', 'error');
     }
   };
 
@@ -450,16 +766,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     try {
         await db.deleteItem('products', id);
         setRawProducts(prev => prev.filter(p => p.id !== id));
-        
-        // Optional: Mark images as deleted
-        const relatedImages = storedImages.filter(img => img.productId === id);
-        for(const img of relatedImages) {
-           await db.deleteItem('images', img.id);
-        }
-        const remainingImages = await db.getAll<StoredImage>('images');
-        setStoredImages(remainingImages);
-
-        addNotification('Product deleted permanently', 'info');
+        addNotification('Product deleted', 'info');
     } catch (e) {
         addNotification('Failed to delete product', 'error');
     }
@@ -467,130 +774,82 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const bulkUpdatePrices = async (percentage: number, category?: string) => {
     const multiplier = 1 + (percentage / 100);
-    const updates: Product[] = [];
-    
-    // 1. Calculate updates
     const newProducts = rawProducts.map(p => {
       if (category && category !== 'All' && p.category !== category) return p;
-      const updated = { ...p, price: Math.round(p.price * multiplier) };
-      updates.push(updated);
-      return updated;
+      return { ...p, price: Math.round(p.price * multiplier) };
     });
-
-    // 2. Perform DB writes
-    for (const p of updates) {
-        await db.putItem('products', p);
-    }
-
-    // 3. Update State
-    setRawProducts(newProducts);
-    addNotification('Prices updated successfully', 'success');
-  };
-
-  // --- Notification System Logic ---
-  const dispatchNotifications = async (order: Order) => {
-    const config = settings.notifications;
-    if (!config) return;
-
-    // Check Threshold
-    if (order.total < config.orderAmountThreshold) return;
-
-    const itemsSummary = order.items.map(i => `${i.name} (x${i.quantity})`).join(', ');
     
-    for (const admin of config.admins) {
-       // Skip if no valid channels
-       if (!admin.channels.includes('WHATSAPP') && !admin.channels.includes('IN_APP')) continue;
+    // Batch Update
+    for (const p of newProducts) await db.putItem('products', p);
+    setRawProducts(newProducts);
+    addNotification('Prices updated', 'success');
+  };
 
-       // 1. Construct Message based on Language
-       let header = '';
-       let body = '';
-       
-       if (admin.language === 'ar') {
-          header = '📦 طلب جديد وصل!';
-          body = `تم استلام الطلب رقم ${order.id} من العميل ${order.customerName}.\nالإجمالي: ${order.total} جنيه\nالمنطقة: ${order.deliveryLocation?.city || 'غير محدد'}\nالأصناف: ${itemsSummary}`;
-       } else {
-          header = '📦 New Order Received!';
-          body = `Order ${order.id} has been placed by ${order.customerName}.\nAmount: ${order.total} EGP\nArea: ${order.deliveryLocation?.city || 'Unknown'}\nItems: ${itemsSummary}`;
-       }
+  // Notification Management
+  const createSystemNotification = async (type: NotificationType, title: string, message: string, priority: 'high' | 'normal' | 'low' = 'normal', data?: any) => {
+    const newNotif: SystemNotification = {
+      id: Date.now().toString(),
+      type,
+      title,
+      message,
+      priority,
+      timestamp: new Date().toISOString(),
+      isRead: false,
+      readBy: [],
+      data
+    };
+    
+    await db.putItem('system_notifications', newNotif);
+    setSystemNotifications(prev => [newNotif, ...prev]);
+    return newNotif;
+  };
 
-       // 2. Create Log Entry
-       const logEntry: NotificationLog = {
-         id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-         orderId: order.id,
-         recipient: admin.name,
-         recipientPhone: admin.phone,
-         channel: config.enableWhatsApp && admin.channels.includes('WHATSAPP') ? 'WHATSAPP' : 'IN_APP',
-         status: 'SENT', // Simulating successful send
-         messageHeader: header,
-         messageBody: body,
-         timestamp: new Date().toISOString()
-       };
-
-       await db.putItem('notification_logs', logEntry);
-       setNotificationLogs(prev => [logEntry, ...prev]);
-       
-       // 3. Trigger In-App UI for current user if they are an admin (Simulated)
-       if (user?.isAdmin) {
-          addNotification(`New Order: ${order.customerName} (${order.total} EGP)`, 'info');
-       }
+  const markNotificationRead = async (id: string) => {
+    const notif = systemNotifications.find(n => n.id === id);
+    if (notif && user) {
+        const updated = { ...notif, isRead: true, readBy: [...(notif.readBy || []), user.id] };
+        await db.putItem('system_notifications', updated);
+        setSystemNotifications(prev => prev.map(n => n.id === id ? updated : n));
     }
   };
-  
-  const sendTestNotification = async () => {
-     // Creates a dummy order to test the flow
-     const dummyOrder: Order = {
-       id: 'TEST-' + Math.floor(Math.random() * 1000),
-       date: new Date().toISOString(),
-       items: [{ id: '1', name: 'Blue Party Cups', price: 50, category: Category.BIRTHDAY_PARTY, description: '', image: '', isCustomizable: false, stock: 100, rating: 5, quantity: 2 }],
-       total: 1250,
-       status: 'Processing',
-       address: 'Test Address, Sheikh Zayed',
-       deliveryLocation: { address: 'Sheikh Zayed', city: 'Sheikh Zayed', governorate: 'Giza' },
-       paymentMethod: PaymentMethod.COD,
-       customerName: 'Sarah Ahmed',
-       customerPhone: '01000000000',
-       deliveryFee: 50
-     };
-     await dispatchNotifications(dummyOrder);
-     addNotification('Test notifications dispatched to logs.', 'success');
+
+  const deleteSystemNotification = async (id: string) => {
+      await db.deleteItem('system_notifications', id);
+      setSystemNotifications(prev => prev.filter(n => n.id !== id));
   };
 
-  // --- Cart & Orders ---
+  const clearAllNotifications = async () => {
+     await db.clearStore('system_notifications');
+     setSystemNotifications([]);
+     addNotification('Inbox cleared', 'info');
+  };
+
+
+  // Cart Logic
   const addToCart = (product: Product, quantity: number, color?: string, note?: string) => {
     const existingItem = cart.find(item => 
       item.id === product.id && 
       item.selectedColor === color && 
       item.customizationNote === note
     );
-
     if (existingItem) {
-      setCart(cart.map(item => 
-        item === existingItem 
-          ? { ...item, quantity: item.quantity + quantity }
-          : item
-      ));
+      setCart(cart.map(item => item === existingItem ? { ...item, quantity: item.quantity + quantity } : item));
     } else {
-      setCart([...cart, { ...product, quantity, selectedColor: color, customizationNote: note, costPrice: product.costPrice }]);
+      setCart([...cart, { ...product, quantity, selectedColor: color, customizationNote: note }]);
     }
     addNotification('Added to cart', 'success');
   };
 
-  const removeFromCart = (id: string) => {
-    setCart(cart.filter(item => item.id !== id));
-  };
-
+  const removeFromCart = (id: string) => setCart(cart.filter(item => item.id !== id));
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
   const placeOrder = async (location: DeliveryLocation, paymentMethod: PaymentMethod) => {
     if (!user) return;
-    
     let deliveryFee = settings.shipping.flatRate;
-    if (cartTotal >= settings.shipping.freeShippingThreshold) {
-      deliveryFee = 0;
-    }
+    if (cartTotal >= settings.shipping.freeShippingThreshold) deliveryFee = 0;
 
     const newOrder: Order = {
-      id: Math.floor(Math.random() * 100000).toString(),
+      id: Math.floor(Math.random() * 100000).toString().padStart(5, '0'),
       date: new Date().toISOString(),
       items: [...cart],
       total: cartTotal + deliveryFee,
@@ -600,93 +859,80 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       paymentMethod,
       customerName: user.name,
       customerPhone: user.phone,
-      deliveryFee: deliveryFee
+      deliveryFee
     };
     
     try {
-        // 1. Deduct Stock
-        const updatedProducts = [...rawProducts];
-        for (const cartItem of cart) {
-            const index = updatedProducts.findIndex(p => p.id === cartItem.id);
-            if (index !== -1) {
-                const p = updatedProducts[index];
-                const newStock = Math.max(0, p.stock - cartItem.quantity);
-                const updatedProduct = { ...p, stock: newStock };
-                
-                await db.putItem('products', updatedProduct);
-                updatedProducts[index] = updatedProduct;
-            }
-        }
-        setRawProducts(updatedProducts);
+      // 1. Save Order (Wait for completion)
+      await db.putItem('orders', newOrder);
+      setOrders(prev => [newOrder, ...prev]);
+      setCart([]);
 
-        // 2. Save Order
-        await db.putItem('orders', newOrder);
-        setOrders(prev => [newOrder, ...prev]);
-        setCart([]);
-        
-        // 3. Notifications
-        await dispatchNotifications(newOrder);
-        
-        addNotification('Order placed successfully!', 'success');
+      // 2. Decrease Stock
+      const updatedProducts = rawProducts.map(p => {
+        const cartItem = cart.find(item => item.id === p.id);
+        if (cartItem) {
+          return { ...p, stock: Math.max(0, p.stock - cartItem.quantity) };
+        }
+        return p;
+      });
+      
+      for(const p of updatedProducts) await db.putItem('products', p);
+      setRawProducts(updatedProducts);
+
+      // 3. Notify
+      const notifTitle = `New Order #${newOrder.id}`;
+      const notifBody = `${newOrder.customerName} (${newOrder.deliveryLocation?.city}) - ${newOrder.total} EGP`;
+      await createSystemNotification('ORDER', notifTitle, notifBody, 'high', { orderId: newOrder.id });
+
     } catch (e) {
-        console.error(e);
-        addNotification('Failed to place order', 'error');
+      console.error(e);
+      addNotification("Critical: Order failed to save. Please check storage.", "error");
     }
   };
 
   const updateOrderStatus = async (id: string, status: Order['status']) => {
-    const order = orders.find(o => o.id === id);
-    if (order) {
-        const updated = { ...order, status };
-        await db.putItem('orders', updated);
-        setOrders(prev => prev.map(o => o.id === id ? updated : o));
-        addNotification(`Order #${id} updated to ${status}`, 'info');
-    }
+    const updated = orders.map(o => o.id === id ? { ...o, status } : o);
+    setOrders(updated);
+    const order = updated.find(o => o.id === id);
+    if(order) await db.putItem('orders', order);
+    addNotification('Order status updated', 'success');
   };
 
-  // --- Coupons ---
-  const addCoupon = async (coupon: Coupon) => {
-    await db.putItem('coupons', coupon);
-    setCoupons(prev => [...prev, coupon]);
-    addNotification('Coupon created', 'success');
-  };
-
-  const deleteCoupon = async (id: string) => {
-    await db.deleteItem('coupons', id);
-    setCoupons(prev => prev.filter(c => c.id !== id));
-    addNotification('Coupon deleted', 'info');
-  };
-
-  // --- Settings ---
-  const updateSettings = (newSettings: AppSettings) => {
+  const updateSettings = async (newSettings: AppSettings) => {
     setSettings(newSettings);
+    await db.setGlobal('hp_settings', newSettings);
     addNotification('Settings saved', 'success');
   };
 
-  return (
-    <StoreContext.Provider value={{
-      isLoading,
-      user, login, logout, updateUser, changeLanguage,
-      addAddress, deleteAddress,
-      products, addProduct, updateProduct, deleteProduct, bulkUpdatePrices,
-      uploadProductImage, uploadUserAvatar, uploadCategoryImage, storedImages, categoryImages,
-      cart, addToCart, removeFromCart, cartTotal,
-      placeOrder, orders, updateOrderStatus,
-      users, toggleUserAdmin,
-      coupons, addCoupon, deleteCoupon,
-      settings, updateSettings,
-      notifications, addNotification, removeNotification, resetSystem,
-      notificationLogs, sendTestNotification
-    }}>
-      {children}
-    </StoreContext.Provider>
-  );
+  // Mock Coupons
+  const addCoupon = async (coupon: Coupon) => {
+    setCoupons([...coupons, coupon]);
+    await db.putItem('coupons', coupon);
+  };
+  const deleteCoupon = async (id: string) => {
+    setCoupons(coupons.filter(c => c.id !== id));
+    await db.deleteItem('coupons', id);
+  };
+
+  const value = {
+    isLoading, user, login, logout, updateUser, changeLanguage,
+    addAddress, deleteAddress,
+    products, addProduct, updateProduct, deleteProduct, bulkUpdatePrices,
+    categories, addCategory, renameCategory, deleteCategory,
+    uploadProductImage, uploadUserAvatar, uploadCategoryImage, storedImages, categoryImages,
+    cart, addToCart, removeFromCart, cartTotal, placeOrder,
+    orders, updateOrderStatus,
+    users, toggleUserAdmin, coupons, addCoupon, deleteCoupon, settings, updateSettings,
+    notifications, addNotification, removeNotification, resetSystem, exportSystemData, importSystemData,
+    systemNotifications, notificationLogs, createSystemNotification, markNotificationRead, deleteSystemNotification, clearAllNotifications
+  };
+
+  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 };
 
 export const useStore = () => {
   const context = useContext(StoreContext);
-  if (context === undefined) {
-    throw new Error('useStore must be used within a StoreProvider');
-  }
+  if (!context) throw new Error('useStore must be used within StoreProvider');
   return context;
 };

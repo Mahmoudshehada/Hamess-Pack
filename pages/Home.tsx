@@ -1,6 +1,5 @@
 
 import React from 'react';
-import { Category } from '../types';
 import { useStore } from '../context/StoreContext';
 import { ArrowRight } from 'lucide-react';
 
@@ -10,7 +9,7 @@ interface HomeProps {
 }
 
 export const Home: React.FC<HomeProps> = ({ onNavigate, onProductClick }) => {
-  const { products, categoryImages } = useStore();
+  const { products, categoryImages, categories } = useStore();
 
   return (
     <div className="animate-fade-in w-full">
@@ -71,7 +70,7 @@ export const Home: React.FC<HomeProps> = ({ onNavigate, onProductClick }) => {
           </div>
           
           <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-4 md:gap-6">
-            {Object.values(Category).slice(0, 6).map((cat) => (
+            {categories.slice(0, 6).map((cat) => (
               <div 
                 key={cat} 
                 onClick={() => onNavigate('catalog', cat)}

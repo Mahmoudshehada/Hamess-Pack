@@ -76,6 +76,13 @@ export const SmartAssistant: React.FC = () => {
 
   const handleExecuteAction = async (messageId: string, payload: AIActionPayload) => {
     if (!payload) return;
+    
+    // SECURITY: Strict Staff Check
+    if (user?.role === 'staff') {
+       addNotification('Action Denied: Staff members cannot execute AI-driven system changes.', 'error');
+       setMessages(prev => prev.map(m => m.id === messageId ? { ...m, status: 'cancelled' } : m));
+       return;
+    }
 
     try {
       switch (payload.action_type) {

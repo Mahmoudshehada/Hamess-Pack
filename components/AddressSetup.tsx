@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Check, Home, User, Smartphone, FileText, Search, MapPin, Building } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
@@ -186,7 +185,7 @@ export const AddressSetup: React.FC<AddressSetupProps> = ({ onClose, initialAddr
                                 value={govSearch}
                                 onChange={e => { setGovSearch(e.target.value); setShowGovList(true); }}
                                 onFocus={() => setShowGovList(true)}
-                                className={`w-full p-3 rounded-xl border outline-none text-sm ${errors.governorate ? 'border-red-500' : 'border-gray-200 focus:border-brand-500'}`}
+                                className={`w-full p-3 rounded-xl border outline-none text-sm bg-white text-gray-900 ${errors.governorate ? 'border-red-500' : 'border-gray-200 focus:border-brand-500'}`}
                                 placeholder="Search governorate..."
                             />
                             <Search className="absolute right-3 top-3.5 text-gray-400 pointer-events-none" size={16} />
@@ -220,7 +219,7 @@ export const AddressSetup: React.FC<AddressSetupProps> = ({ onClose, initialAddr
                                 onChange={e => { setCitySearch(e.target.value); setShowCityList(true); }}
                                 onFocus={() => setShowCityList(true)}
                                 disabled={!form.governorate}
-                                className={`w-full p-3 rounded-xl border outline-none text-sm ${errors.city ? 'border-red-500' : 'border-gray-200 focus:border-brand-500'} ${!form.governorate ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                className={`w-full p-3 rounded-xl border outline-none text-sm text-gray-900 ${errors.city ? 'border-red-500' : 'border-gray-200 focus:border-brand-500'} ${!form.governorate ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
                                 placeholder={form.governorate ? "Search area..." : "Select governorate first"}
                             />
                             <Search className="absolute right-3 top-3.5 text-gray-400 pointer-events-none" size={16} />
@@ -259,7 +258,7 @@ export const AddressSetup: React.FC<AddressSetupProps> = ({ onClose, initialAddr
                         type="text"
                         value={form.location}
                         onChange={e => setForm({...form, location: e.target.value})}
-                        className={`w-full p-3 rounded-xl border outline-none text-sm ${errors.location ? 'border-red-500' : 'border-gray-200 focus:ring-2 focus:ring-brand-500'}`}
+                        className={`w-full p-3 rounded-xl border outline-none text-sm bg-white text-gray-900 ${errors.location ? 'border-red-500' : 'border-gray-200 focus:ring-2 focus:ring-brand-500'}`}
                         placeholder="e.g. Building 15, Street 9, Near Metro Market"
                     />
                     {errors.location && <p className="text-xs text-red-500 mt-1">{errors.location}</p>}
@@ -274,7 +273,7 @@ export const AddressSetup: React.FC<AddressSetupProps> = ({ onClose, initialAddr
                             type="text"
                             value={form.apartment}
                             onChange={e => setForm({...form, apartment: e.target.value})}
-                            className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+                            className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-brand-500 outline-none text-sm bg-white text-gray-900"
                             placeholder="e.g. Apt 4, Floor 2"
                         />
                     </div>
@@ -298,7 +297,7 @@ export const AddressSetup: React.FC<AddressSetupProps> = ({ onClose, initialAddr
                                 type="text"
                                 value={form.name}
                                 onChange={e => setForm({...form, name: e.target.value})}
-                                className={`w-full pl-10 pr-4 py-3 rounded-xl border outline-none text-sm ${errors.name ? 'border-red-500' : 'border-gray-200 focus:ring-2 focus:ring-brand-500'}`}
+                                className={`w-full pl-10 pr-4 py-3 rounded-xl border outline-none text-sm bg-white text-gray-900 ${errors.name ? 'border-red-500' : 'border-gray-200 focus:ring-2 focus:ring-brand-500'}`}
                             />
                         </div>
                          {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
@@ -313,7 +312,7 @@ export const AddressSetup: React.FC<AddressSetupProps> = ({ onClose, initialAddr
                                 type="tel"
                                 value={form.phone}
                                 onChange={e => setForm({...form, phone: e.target.value})}
-                                className={`w-full pl-10 pr-4 py-3 rounded-xl border outline-none text-sm ${errors.phone ? 'border-red-500' : 'border-gray-200 focus:ring-2 focus:ring-brand-500'}`}
+                                className={`w-full pl-10 pr-4 py-3 rounded-xl border outline-none text-sm bg-white text-gray-900 ${errors.phone ? 'border-red-500' : 'border-gray-200 focus:ring-2 focus:ring-brand-500'}`}
                                 placeholder="01xxxxxxxxx"
                             />
                         </div>
@@ -330,7 +329,7 @@ export const AddressSetup: React.FC<AddressSetupProps> = ({ onClose, initialAddr
                             rows={2}
                             value={form.instructions}
                             onChange={e => setForm({...form, instructions: e.target.value})}
-                            className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-brand-500 outline-none text-sm resize-none"
+                            className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-brand-500 outline-none text-sm resize-none bg-white text-gray-900"
                             placeholder="e.g. Leave with security"
                         />
                     </div>

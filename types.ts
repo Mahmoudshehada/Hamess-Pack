@@ -2,32 +2,33 @@
 export interface Product {
   id: string;
   name: string;
-  nameAr?: string; // Arabic Name
+  nameAr?: string;
   price: number;
-  category: Category;
+  category: string; // Dynamic string instead of Enum
   description: string;
-  descriptionAr?: string; // Arabic Description
-  image: string; // This will now hold the resolved Data URI or fallback URL
-  imageId?: string; // Link to StoredImage
-  imagePath?: string; // Virtual path /uploads/products/...
+  descriptionAr?: string;
+  image: string;
+  imageId?: string;
+  imagePath?: string;
   rating: number;
   colors?: string[];
   isCustomizable: boolean;
   stock: number;
-  costPrice?: number; // For reports
+  costPrice?: number;
 }
 
 export interface StoredImage {
   id: string;
   productId: string;
   path: string;
-  data: string; // Base64 Data URI
+  data: string;
   uploadDate: string;
   mimeType: string;
   status: 'active' | 'pending_deletion';
 }
 
-export enum Category {
+// Default Categories (Initial State)
+export enum CategoryEnum {
   GIFTS = 'Gifts',
   KITCHEN_TOOLS = 'Kitchen Tools',
   BIRTHDAY_PARTY = 'Birthday & Party',
@@ -49,16 +50,13 @@ export interface CartItem extends Product {
 
 export interface Address {
   id: string;
-  // Manual Fields
-  label: string; // "Location (e.g. building name, street #)"
+  label: string; 
   apartment?: string; 
-  governorate: string; // "Giza"
-  city: string; // "Sheikh Zayed"
-  phone: string; // Replaces email for address contact
+  governorate: string; 
+  city: string; 
+  phone: string; 
   contactName: string;
-  instructions?: string; // Address Specific Instructions
-  
-  // Legacy / Optional Geo fields (Nullable in DB)
+  instructions?: string; 
   formattedAddress?: string;
   lat?: number;
   lng?: number;
@@ -67,12 +65,11 @@ export interface Address {
 }
 
 export interface DeliveryLocation {
-  addressId?: string; // If selected from saved
-  address: string; // Formatted text for display
+  addressId?: string;
+  address: string;
   governorate?: string;
   city?: string;
   notes?: string;
-  // Geo optional
   lat?: number;
   lng?: number;
   placeId?: string;
@@ -94,16 +91,20 @@ export interface Order {
   deliveryFee: number;
 }
 
+export type UserRole = 'admin' | 'staff' | 'customer';
+
 export interface User {
   id: string;
   name: string;
+  username?: string; // Added for simple login
   email: string;
   phone: string;
-  isAdmin: boolean;
-  password?: string; // Added for admin auth
+  role: UserRole;
+  isAdmin: boolean; 
+  password?: string;
   addresses: Address[];
   birthday?: string;
-  avatar?: string; // Base64 Data URI
+  avatar?: string;
   language: 'en' | 'ar';
   notificationsEnabled: boolean;
   country: string;
@@ -124,7 +125,6 @@ export interface Coupon {
   usageCount: number;
 }
 
-// --- Notification Types ---
 export interface NotificationAdminProfile {
   name: string;
   phone: string;
@@ -140,10 +140,24 @@ export interface NotificationConfig {
   admins: NotificationAdminProfile[];
 }
 
+export type NotificationType = 'ORDER' | 'STOCK' | 'AI' | 'SYSTEM';
+
+export interface SystemNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  timestamp: string;
+  isRead: boolean;
+  readBy?: string[]; 
+  data?: any; 
+  priority: 'high' | 'normal' | 'low';
+}
+
 export interface NotificationLog {
   id: string;
   orderId: string;
-  recipient: string; // Name of admin
+  recipient: string;
   recipientPhone: string;
   channel: 'WHATSAPP' | 'PUSH' | 'IN_APP';
   status: 'SENT' | 'FAILED' | 'QUEUED';
@@ -153,35 +167,36 @@ export interface NotificationLog {
 }
 
 export interface AppSettings {
-  brandColor: string;
-  currency: string;
+  general: {
+    brandName: string;
+    contactEmail: string;
+    currency: string;
+    language: 'en' | 'ar';
+  };
+  shipping: {
+    flatRate: number;
+    freeShippingThreshold: number;
+    deliveryAreas: string[];
+  };
   paymentGateways: {
     paymob: boolean;
     fawry: boolean;
     stripe: boolean;
   };
-  shipping: {
-    flatRate: number;
-    freeShippingThreshold: number;
-  };
   notifications: NotificationConfig;
-}
-
-// --- AI / Smart Assistant Types ---
-export interface AIRecommendation {
-  id: string;
-  type: 'REORDER' | 'DISCOUNT' | 'BUNDLE';
-  severity: 'URGENT' | 'WARNING' | 'OPPORTUNITY';
-  productId: string;
-  productName: string;
-  currentStock: number;
-  velocity: number; // Sales per day
-  daysRemaining: number;
-  suggestion: {
-    action: string;
-    value: string | number; // e.g. reorder qty or discount %
-    rationaleEn: string;
-    rationaleAr: string;
+  ai: {
+    enabled: boolean;
+    autoPricing: boolean;
+    autoReorder: boolean;
+    tone: 'Professional' | 'Friendly' | 'Urgent';
+  };
+  security: {
+    sessionTimeout: number;
+    requireComplexPassword: boolean;
+  };
+  backup: {
+    lastBackupDate: string | null;
+    autoBackup: boolean;
   };
 }
 
@@ -196,49 +211,15 @@ export interface AIChatResponse {
   action_payload: AIActionPayload | null;
   confidence: number;
   explanation: string;
+  relatedProduct?: Product;
 }
 
 export interface AIChatMessage {
   id: string;
   role: 'user' | 'assistant';
-  content: string; // The displayed content based on language preference
+  content: string;
   payload?: AIActionPayload | null;
   timestamp: number;
   status?: 'pending_action' | 'executed' | 'cancelled';
-}
-
-// --- Auto-Reorder & Forecasting Types ---
-export interface Supplier {
-  id: string;
-  name: string;
-  contactPhone: string;
-  email: string;
-  leadTimeDays: number;
-}
-
-export interface PurchaseOrder {
-  id: string;
-  supplierId: string;
-  supplierName: string;
-  status: 'draft' | 'pending_approval' | 'sent' | 'fulfilled' | 'cancelled';
-  createdDate: string;
-  items: {
-    productId: string;
-    productName: string;
-    currentStock: number;
-    reorderQty: number;
-    cost: number;
-  }[];
-  totalCost: number;
-  notes?: string;
-}
-
-export interface DemandForecast {
-  productId: string;
-  forecast: {
-    date: string;
-    predictedSales: number;
-    confidenceLow: number;
-    confidenceHigh: number;
-  }[];
+  relatedProduct?: Product;
 }

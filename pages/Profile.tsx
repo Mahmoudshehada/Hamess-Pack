@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useStore } from '../context/StoreContext';
 import { 
   Package, MapPin, Settings, LogOut, Phone, User as UserIcon, 
@@ -24,6 +24,12 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
   // Form States
   const [profileForm, setProfileForm] = useState({ name: '', phone: '', email: '', birthday: '', country: '' });
   
+  // Filter orders for the logged-in user
+  const myOrders = useMemo(() => {
+    if (!user) return [];
+    return orders.filter(order => order.customerPhone === user.phone);
+  }, [orders, user]);
+
   // Initialize form when user data is available
   useEffect(() => {
     if (user) {
@@ -44,7 +50,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
 
   const isRTL = user.language === 'ar';
   
-  const ordersCount = orders.length;
+  const ordersCount = myOrders.length;
   // Simulating returns for now
   const returnsCount = 0;
 
@@ -79,6 +85,7 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
     returns: isRTL ? 'المرتجعات' : 'Returns',
     account: isRTL ? 'الحساب' : 'Account',
     adminDash: isRTL ? 'لوحة التحكم' : 'Admin Dashboard',
+    staffDash: isRTL ? 'لوحة الموظفين' : 'Staff Dashboard',
     editProfile: isRTL ? 'تعديل الملف الشخصي' : 'Edit Profile',
     addresses: isRTL ? 'العناوين المحفوظة' : 'Saved Addresses',
     security: isRTL ? 'الأمان و كلمة المرور' : 'Security & Password',
@@ -350,7 +357,6 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
                       <p className="text-xs text-gray-500">iOS App (TestFlight / Store)</p>
                    </div>
                 </div>
-                {/* For production, this links to App Store. For testing, it's TestFlight public link */}
                 <button 
                    onClick={() => alert("Developer Note: You must upload the IPA to TestFlight first, then add the Public Link here.")}
                    className="px-4 py-2 bg-blue-50 text-blue-600 rounded-lg font-bold text-sm hover:bg-blue-100 transition"
@@ -487,6 +493,11 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
             </div>
             <h1 className="text-2xl font-bold tracking-tight">{user.name}</h1>
             <p className="text-brand-100 text-sm font-medium mt-1 opacity-90">{user.phone}</p>
+            {user.role && user.role !== 'customer' && (
+               <span className="inline-block mt-2 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-widest border border-white/30">
+                 {user.role}
+               </span>
+            )}
           </div>
         </div>
 
@@ -517,7 +528,8 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
             <div>
                <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 ml-1 px-2">{t.account}</h2>
                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden divide-y divide-gray-50">
-                 {user.isAdmin && (
+                 {/* Show Dashboard for both Admin and Staff */}
+                 {(user.role === 'admin' || user.role === 'staff' || user.isAdmin) && (
                    <button 
                     onClick={onAdminClick}
                     className="w-full p-4 flex items-center gap-4 hover:bg-gray-50 transition text-left group text-start"
@@ -526,7 +538,9 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
                         <Settings size={18} />
                      </div>
                      <div className="flex-1">
-                        <span className="block font-bold text-gray-900">{t.adminDash}</span>
+                        <span className="block font-bold text-gray-900">
+                           {user.role === 'staff' ? t.staffDash : t.adminDash}
+                        </span>
                      </div>
                      <ChevronRight size={18} className={`text-gray-300 ${isRTL ? 'rotate-180' : ''}`} />
                    </button>
@@ -582,13 +596,13 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
             <div>
               <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 ml-1 px-2">{t.orders}</h2>
               <div className="space-y-3">
-                {orders.length === 0 ? (
+                {myOrders.length === 0 ? (
                   <div className="text-center py-8 bg-white rounded-2xl border border-gray-100 border-dashed">
                     <Package size={32} className="mx-auto text-gray-300 mb-2" />
                     <p className="text-gray-400 text-sm">{t.noOrders}</p>
                   </div>
                 ) : (
-                  orders.slice(0, 3).map(order => (
+                  myOrders.slice(0, 3).map(order => (
                     <div key={order.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition cursor-pointer">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center font-bold text-sm">

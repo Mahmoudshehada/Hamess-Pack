@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { StoreProvider, useStore, Notification } from './context/StoreContext';
 import { BottomNav } from './components/BottomNav';
@@ -160,15 +161,12 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="w-full bg-gray-50 min-h-screen font-sans text-gray-900">
-      {/* Render Header/Nav for both Desktop and Mobile */}
       {currentView === 'main' && <BottomNav currentTab={activeTab} onTabChange={setActiveTab} />}
       
-      {/* Main Content Area */}
       <div className={`min-h-screen ${currentView === 'main' ? 'md:pt-20 pb-20 md:pb-0' : ''}`}>
         {renderContent()}
       </div>
       
-      {/* Notification Container */}
       <div className="fixed top-20 right-4 z-[60] flex flex-col items-end gap-2 pointer-events-none">
         {notifications.map(n => (
           <div key={n.id} className="pointer-events-auto">
