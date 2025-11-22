@@ -1,8 +1,6 @@
 
-
 import React, { createContext, useContext, useState, ReactNode, useMemo, useEffect, useCallback } from 'react';
 import { CartItem, Product, Order, User, Coupon, AppSettings, PaymentMethod, Category, StoredImage, DeliveryLocation, Address, NotificationLog } from '../types';
-import { MOCK_PRODUCTS as INITIAL_PRODUCTS } from '../constants';
 import * as db from '../utils/storage';
 
 export interface Notification {
@@ -105,19 +103,6 @@ const compressImage = (file: File, maxWidth = 600, maxHeight = 600, quality = 0.
   });
 };
 
-// Helper: Sanitize Product for Storage (Strip Base64)
-const sanitizeProductForStorage = (product: Product): Product => {
-  const p = { ...product };
-  if (p.image && typeof p.image === 'string' && p.image.startsWith('data:')) {
-     if (p.imagePath) {
-         p.image = p.imagePath; 
-     } else {
-         p.image = p.imageId ? `/uploads/products/${p.imageId}.jpg` : 'https://via.placeholder.com/400?text=No+Image'; 
-     }
-  }
-  return p;
-};
-
 export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -159,71 +144,66 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
-  // --- Initialization (IndexedDB Load) ---
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const isInitialized = await db.getGlobal<boolean>('app_initialized', false);
+  // --- Critical Persistence Loader ---
+  const loadDataFromDB = async () => {
+    try {
+      // 1. Load Products
+      const dbProducts = await db.getAll<Product>('products');
+      setRawProducts(dbProducts || []);
 
-        const dbProducts = await db.getAll<Product>('products');
-        if (!isInitialized && dbProducts.length === 0 && INITIAL_PRODUCTS.length > 0) {
-             await db.bulkPut('products', INITIAL_PRODUCTS);
-             setRawProducts(INITIAL_PRODUCTS);
-             await db.setGlobal('app_initialized', true);
-        } else {
-             setRawProducts(dbProducts);
-             if (!isInitialized) await db.setGlobal('app_initialized', true);
+      // 2. Load Images
+      const dbImages = await db.getAll<StoredImage>('images');
+      setStoredImages(dbImages || []);
+
+      // 3. Load Orders
+      const dbOrders = await db.getAll<Order>('orders');
+      setOrders((dbOrders || []).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+
+      // 4. Load Coupons & Logs
+      const dbCoupons = await db.getAll<Coupon>('coupons');
+      setCoupons(dbCoupons || []);
+      
+      const dbLogs = await db.getAll<NotificationLog>('notification_logs');
+      setNotificationLogs((dbLogs || []).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+
+      // 5. Load Globals
+      const loadedUser = await db.getGlobal<User | null>('hp_user', null);
+      setUser(loadedUser);
+
+      const loadedSettings = await db.getGlobal<AppSettings>('hp_settings', settings);
+      setSettings(prev => ({ 
+          ...prev, 
+          ...loadedSettings,
+          notifications: { ...prev.notifications, ...loadedSettings.notifications }
+      }));
+
+      const loadedCart = await db.getGlobal<CartItem[]>('hp_cart', []);
+      setCart(loadedCart);
+      
+      const loadedUsers = await db.getGlobal<User[]>('hp_users', [
+        { 
+          id: '1', name: 'Walid El Sheikh', phone: '01066665153', email: 'walidelsheikh011111@gmail.com', 
+          isAdmin: true, password: '$2b$10$ExampleHashForWalid666', addresses: [], language: 'en', 
+          notificationsEnabled: true, country: 'Egypt', birthday: ''
+        },
+        { 
+          id: '2', name: 'Mahmoud Shehada', phone: '01010340487', email: 'msbas999@gmail.com', 
+          isAdmin: true, password: '$2b$10$ExampleHashForMahmoud77', addresses: [], language: 'en', 
+          notificationsEnabled: true, country: 'Egypt', birthday: ''
         }
+      ]);
+      setUsers(loadedUsers);
 
-        const dbImages = await db.getAll<StoredImage>('images');
-        setStoredImages(dbImages);
+    } catch (error) {
+      console.error("CRITICAL: Database Load Failed:", error);
+      addNotification("Database Error. Please refresh.", "error");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-        const dbOrders = await db.getAll<Order>('orders');
-        setOrders(dbOrders.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-
-        const dbCoupons = await db.getAll<Coupon>('coupons');
-        setCoupons(dbCoupons);
-        
-        const dbLogs = await db.getAll<NotificationLog>('notification_logs');
-        setNotificationLogs(dbLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-
-        const loadedUser = await db.getGlobal<User | null>('hp_user', null);
-        setUser(loadedUser);
-
-        const loadedSettings = await db.getGlobal<AppSettings>('hp_settings', settings);
-        // Ensure deep merge of notifications settings in case of new schema
-        setSettings(prev => ({ 
-            ...prev, 
-            ...loadedSettings,
-            notifications: { ...prev.notifications, ...loadedSettings.notifications }
-        }));
-
-        const loadedCart = await db.getGlobal<CartItem[]>('hp_cart', []);
-        setCart(loadedCart);
-        
-        const loadedUsers = await db.getGlobal<User[]>('hp_users', [
-          { 
-            id: '1', name: 'Walid El Sheikh', phone: '01066665153', email: 'walidelsheikh011111@gmail.com', 
-            isAdmin: true, password: '$2b$10$ExampleHashForWalid666', addresses: [], language: 'en', 
-            notificationsEnabled: true, country: 'Egypt', birthday: ''
-          },
-          { 
-            id: '2', name: 'Mahmoud Shehada', phone: '01010340487', email: 'msbas999@gmail.com', 
-            isAdmin: true, password: '$2b$10$ExampleHashForMahmoud77', addresses: [], language: 'en', 
-            notificationsEnabled: true, country: 'Egypt', birthday: ''
-          }
-        ]);
-        setUsers(loadedUsers);
-
-      } catch (error) {
-        console.error("Database Load Failed:", error);
-        addNotification("Failed to load data from database.", "error");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadData();
+  useEffect(() => {
+    loadDataFromDB();
   }, []);
 
   // --- Sync Globals on Change ---
@@ -235,6 +215,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // --- Actions ---
 
   const resetSystem = async () => {
+    if(!window.confirm("WARNING: This will wipe all products, orders, and settings. Are you sure?")) return;
     try {
       await db.clearStore('products');
       await db.clearStore('images');
@@ -246,7 +227,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       setOrders([]);
       setNotificationLogs([]);
       
-      addNotification('System Reset Complete. Database Cleared.', 'success');
+      addNotification('System Factory Reset Complete.', 'success');
       setTimeout(() => window.location.reload(), 1000);
     } catch (e) {
       console.error("Reset failed", e);
@@ -254,6 +235,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
+  // ... [User/Address/Auth Logic remains unchanged] ...
   const login = (phone: string, name?: string, email?: string) => {
     const existingUser = users.find(u => u.phone === phone);
     if (existingUser) {
@@ -328,7 +310,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const newImage: StoredImage = {
         id: `img_${timestamp}_${Math.random().toString(36).substr(2, 9)}`,
         productId: productId,
-        path: `/uploads/products/${productId}_${timestamp}.${ext}`,
+        path: '', // We don't rely on path for display anymore
         data: base64Data,
         uploadDate: new Date().toISOString(),
         mimeType: 'image/jpeg',
@@ -336,7 +318,11 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       };
 
       await db.putItem('images', newImage);
-      setStoredImages(prev => [...prev, newImage]);
+      
+      // Immediately reload images from DB to ensure consistency
+      const allImages = await db.getAll<StoredImage>('images');
+      setStoredImages(allImages);
+      
       return newImage;
     } catch (error) {
       console.error("Failed to process image", error);
@@ -357,24 +343,41 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   // --- Product Logic ---
+  
+  // Memoized Product list that attaches images dynamically
   const products = useMemo(() => {
     return rawProducts.map(product => {
-      if (product.imageId && !product.image?.startsWith('data:')) {
+      // If product has an imageId, try to find it in the loaded images
+      if (product.imageId) {
         const storedImg = storedImages.find(img => img.id === product.imageId && img.status === 'active');
         if (storedImg) {
           return { ...product, image: storedImg.data };
         }
       }
-      return product;
+      // Fallback if no imageId or image not found
+      if (product.image && product.image.startsWith('data:')) return product; // Already has data
+      if (product.image) return product; // Has a URL
+      
+      return { ...product, image: 'https://via.placeholder.com/400?text=No+Image' };
     });
   }, [rawProducts, storedImages]);
 
   const addProduct = async (product: Product) => {
     try {
-        const cleanProduct = sanitizeProductForStorage(product);
-        await db.putItem('products', cleanProduct);
-        setRawProducts(prev => [cleanProduct, ...prev]);
-        addNotification('Product added successfully', 'success');
+        // 1. Prepare Product (Ensure no huge base64 strings in the 'image' field if imageId exists)
+        const productToSave = { ...product };
+        if (productToSave.imageId && productToSave.image && productToSave.image.startsWith('data:')) {
+            productToSave.image = ''; // Clear the heavy string, we rely on imageId
+        }
+
+        // 2. Save to DB
+        await db.putItem('products', productToSave);
+        
+        // 3. Force Reload from DB to guarantee State matches Disk
+        const dbProducts = await db.getAll<Product>('products');
+        setRawProducts(dbProducts);
+        
+        addNotification('Product saved securely.', 'success');
     } catch (e) {
         console.error("Add Product Error", e);
         addNotification('Failed to save product. Storage might be full.', 'error');
@@ -383,9 +386,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const updateProduct = async (product: Product) => {
     try {
-        const cleanProduct = sanitizeProductForStorage(product);
-        await db.putItem('products', cleanProduct);
-        setRawProducts(prev => prev.map(p => p.id === product.id ? cleanProduct : p));
+        const productToSave = { ...product };
+         // Prevent double storage of base64 in the main product object if we have an ID
+        if (productToSave.imageId && productToSave.image && productToSave.image.startsWith('data:')) {
+             productToSave.image = ''; 
+        }
+
+        await db.putItem('products', productToSave);
+        
+        // Update State Locally for speed, but DB is source of truth
+        setRawProducts(prev => prev.map(p => p.id === product.id ? productToSave : p));
         addNotification('Product updated', 'success');
     } catch (e) {
         addNotification('Failed to update product', 'error');
@@ -396,10 +406,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     try {
         await db.deleteItem('products', id);
         setRawProducts(prev => prev.filter(p => p.id !== id));
-        setStoredImages(prev => prev.map(img => 
-          img.productId === id ? { ...img, status: 'pending_deletion' } : img
-        ));
-        addNotification('Product deleted', 'info');
+        
+        // Optional: Mark images as deleted
+        const relatedImages = storedImages.filter(img => img.productId === id);
+        for(const img of relatedImages) {
+           await db.deleteItem('images', img.id);
+        }
+        const remainingImages = await db.getAll<StoredImage>('images');
+        setStoredImages(remainingImages);
+
+        addNotification('Product deleted permanently', 'info');
     } catch (e) {
         addNotification('Failed to delete product', 'error');
     }
@@ -409,18 +425,20 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const multiplier = 1 + (percentage / 100);
     const updates: Product[] = [];
     
+    // 1. Calculate updates
     const newProducts = rawProducts.map(p => {
       if (category && category !== 'All' && p.category !== category) return p;
-      const cleanP = sanitizeProductForStorage(p);
-      const updated = { ...cleanP, price: Math.round(p.price * multiplier) };
+      const updated = { ...p, price: Math.round(p.price * multiplier) };
       updates.push(updated);
       return updated;
     });
 
+    // 2. Perform DB writes
     for (const p of updates) {
         await db.putItem('products', p);
     }
 
+    // 3. Update State
     setRawProducts(newProducts);
     addNotification('Prices updated successfully', 'success');
   };

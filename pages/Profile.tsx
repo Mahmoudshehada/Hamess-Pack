@@ -5,7 +5,7 @@ import {
   Package, MapPin, Settings, LogOut, Phone, User as UserIcon, 
   ChevronRight, X, Save, Calendar, Mail, Lock, Globe, Bell, 
   Plus, Trash2, Shield, Camera, Home, Map, ChevronLeft, Heart,
-  Smartphone, Monitor, Download, Share, PlusSquare
+  Smartphone, Monitor, Download, Share, PlusSquare, RefreshCw
 } from 'lucide-react';
 import { AddressSetup } from '../components/AddressSetup';
 import { DeliveryLocation } from '../types';
@@ -115,7 +115,10 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
     hello: isRTL ? 'مرحباً' : 'Hello',
     emptyAddr: isRTL ? 'لا توجد عناوين محفوظة' : 'No saved addresses.',
     installApp: isRTL ? 'تحميل التطبيق' : 'Get the App',
-    installDesc: isRTL ? 'حمل التطبيق على هاتفك' : 'Download for iOS & Android'
+    installDesc: isRTL ? 'حمل التطبيق على هاتفك' : 'Download for iOS & Android',
+    reload: isRTL ? 'إعادة تحميل التطبيق' : 'Reload Application',
+    reloadDesc: isRTL ? 'تحديث للتحقق من البيانات' : 'Refresh to verify data sync',
+    reloadAction: isRTL ? 'تحديث' : 'Reload'
   };
 
   // --- Sub-Views ---
@@ -441,6 +444,23 @@ export const Profile: React.FC<ProfileProps> = ({ onLogout, onAdminClick }) => {
               />
               <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
             </label>
+         </div>
+
+          {/* Reload App Toggle */}
+          <div className="p-4 bg-white rounded-2xl border border-gray-200 flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-3">
+               <div className="p-2 bg-purple-50 text-purple-600 rounded-lg"><RefreshCw size={20} /></div>
+               <div>
+                  <h4 className="font-bold">{t.reload}</h4>
+                  <p className="text-xs text-gray-500">{t.reloadDesc}</p>
+               </div>
+            </div>
+            <button 
+               onClick={() => window.location.reload()}
+               className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-bold transition text-gray-700"
+            >
+               {t.reloadAction}
+            </button>
          </div>
       </div>
     </div>

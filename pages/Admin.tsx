@@ -1,5 +1,4 @@
 
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useStore } from '../context/StoreContext';
 import { Category, Product, Coupon, AIRecommendation, PurchaseOrder, Supplier } from '../types';
@@ -1405,6 +1404,11 @@ const SettingsView: React.FC = () => {
 
         <button onClick={handleSave} className="w-full py-3 bg-brand-600 text-white rounded-xl font-bold shadow-lg hover:bg-brand-700 flex items-center justify-center gap-2">
           <RefreshCw size={20} /> Save Settings
+        </button>
+        
+        {/* New Reload Button */}
+        <button onClick={() => window.location.reload()} className="w-full py-3 bg-gray-800 text-white rounded-xl font-bold shadow-lg hover:bg-gray-900 flex items-center justify-center gap-2 mt-4">
+          <RefreshCw size={20} /> Reload System
         </button>
 
         {/* Danger Zone */}
