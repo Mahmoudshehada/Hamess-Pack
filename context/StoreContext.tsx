@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, ReactNode, useMemo, useEffect, useCallback } from 'react';
 import { CartItem, Product, Order, User, Coupon, AppSettings, PaymentMethod, Category, StoredImage, DeliveryLocation, Address, NotificationLog } from '../types';
 import * as db from '../utils/storage';
-import { CATEGORY_IMAGES } from '../constants';
+import { CATEGORY_IMAGES, MOCK_PRODUCTS } from '../constants';
 
 export interface Notification {
   id: string;
@@ -94,6 +94,10 @@ const compressImage = (file: File, maxWidth = 600, maxHeight = 600, quality = 0.
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (ctx) {
+            // Fill white background for transparency handling (important for PNG -> JPEG)
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, width, height);
+            
             ctx.drawImage(img, 0, 0, width, height);
             resolve(canvas.toDataURL('image/jpeg', quality)); 
         } else {
@@ -152,7 +156,14 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const loadDataFromDB = async () => {
     try {
       // 1. Load Products
-      const dbProducts = await db.getAll<Product>('products');
+      let dbProducts = await db.getAll<Product>('products');
+      
+      // Seed if empty - USING THE NEW HARDCODED CONSTANTS AS SOURCE OF TRUTH
+      if (!dbProducts || dbProducts.length === 0) {
+        console.log("Initializing Product Database from Permanent Constants...");
+        await db.bulkPut('products', MOCK_PRODUCTS);
+        dbProducts = MOCK_PRODUCTS;
+      }
       setRawProducts(dbProducts || []);
 
       // 2. Load Images
@@ -224,7 +235,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   // --- Actions ---
 
   const resetSystem = async () => {
-    if(!window.confirm("WARNING: This will wipe all products, orders, and settings. Are you sure?")) return;
+    if(!window.confirm("WARNING: This will wipe all data and restore the 22 permanent products. Are you sure?")) return;
     try {
       await db.clearStore('products');
       await db.clearStore('images');
@@ -232,13 +243,16 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       await db.clearStore('notification_logs');
       await db.deleteItem('globals', 'hp_category_images');
       
-      setRawProducts([]);
+      // Reset to MOCK_PRODUCTS (Permanent list)
+      await db.bulkPut('products', MOCK_PRODUCTS);
+      
+      setRawProducts(MOCK_PRODUCTS);
       setStoredImages([]);
-      setCategoryImages(CATEGORY_IMAGES); // Reset to defaults
+      setCategoryImages(CATEGORY_IMAGES); 
       setOrders([]);
       setNotificationLogs([]);
       
-      addNotification('System Factory Reset Complete.', 'success');
+      addNotification('System Reset to Factory Defaults.', 'success');
       setTimeout(() => window.location.reload(), 1000);
     } catch (e) {
       console.error("Reset failed", e);
@@ -527,7 +541,7 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
      const dummyOrder: Order = {
        id: 'TEST-' + Math.floor(Math.random() * 1000),
        date: new Date().toISOString(),
-       items: [{ id: '1', name: 'Blue Party Cups', price: 50, category: Category.PARTY_SUPPLIES, description: '', image: '', isCustomizable: false, stock: 100, rating: 5, quantity: 2 }],
+       items: [{ id: '1', name: 'Blue Party Cups', price: 50, category: Category.BIRTHDAY_PARTY, description: '', image: '', isCustomizable: false, stock: 100, rating: 5, quantity: 2 }],
        total: 1250,
        status: 'Processing',
        address: 'Test Address, Sheikh Zayed',
@@ -590,15 +604,32 @@ export const StoreProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
     
     try {
+        // 1. Deduct Stock
+        const updatedProducts = [...rawProducts];
+        for (const cartItem of cart) {
+            const index = updatedProducts.findIndex(p => p.id === cartItem.id);
+            if (index !== -1) {
+                const p = updatedProducts[index];
+                const newStock = Math.max(0, p.stock - cartItem.quantity);
+                const updatedProduct = { ...p, stock: newStock };
+                
+                await db.putItem('products', updatedProduct);
+                updatedProducts[index] = updatedProduct;
+            }
+        }
+        setRawProducts(updatedProducts);
+
+        // 2. Save Order
         await db.putItem('orders', newOrder);
         setOrders(prev => [newOrder, ...prev]);
         setCart([]);
         
-        // TRIGGER NOTIFICATIONS
+        // 3. Notifications
         await dispatchNotifications(newOrder);
         
         addNotification('Order placed successfully!', 'success');
     } catch (e) {
+        console.error(e);
         addNotification('Failed to place order', 'error');
     }
   };

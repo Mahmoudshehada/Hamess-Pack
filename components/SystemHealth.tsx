@@ -1,7 +1,6 @@
 
-
 import React, { useEffect, useState } from 'react';
-import { Database, HardDrive, AlertTriangle, CheckCircle, Server } from 'lucide-react';
+import { Database, HardDrive, AlertTriangle, CheckCircle, Server, Package } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { estimateUsage } from '../utils/storage';
 
@@ -11,6 +10,10 @@ export const SystemHealth: React.FC = () => {
   const [quotaPercentage, setQuotaPercentage] = useState<number>(0);
   const [dbType, setDbType] = useState<'LocalStorage' | 'IndexedDB'>('IndexedDB');
   const [healthStatus, setHealthStatus] = useState<'Good' | 'Warning' | 'Critical'>('Good');
+
+  // Inventory Metrics
+  const lowStockCount = products.filter(p => p.stock <= 10).length;
+  const outOfStockCount = products.filter(p => p.stock === 0).length;
 
   useEffect(() => {
     calculateStorage();
@@ -39,7 +42,7 @@ export const SystemHealth: React.FC = () => {
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
       <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-        <Server size={20} className="text-brand-600" /> System Health & Storage
+        <Server size={20} className="text-brand-600" /> System & Inventory Health
       </h3>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -80,23 +83,32 @@ export const SystemHealth: React.FC = () => {
            </p>
         </div>
 
-        {/* Item Counts */}
+        {/* Inventory Health */}
         <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
            <div className="flex items-center gap-2 mb-2">
-             <Server size={18} className="text-gray-500" />
-             <span className="text-sm font-bold text-gray-700">Record Count</span>
+             <Package size={18} className="text-gray-500" />
+             <span className="text-sm font-bold text-gray-700">Inventory Status</span>
            </div>
-           <div className="flex justify-between text-sm mt-2">
-             <span className="text-gray-600">Products:</span>
-             <span className="font-bold">{products.length}</span>
-           </div>
-           <div className="flex justify-between text-sm">
-             <span className="text-gray-600">Images:</span>
-             <span className="font-bold">{storedImages.length}</span>
-           </div>
-           <div className="flex justify-between text-sm">
-             <span className="text-gray-600">Orders:</span>
-             <span className="font-bold">{orders.length}</span>
+           
+           <div className="space-y-2 mt-2">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-600">Total Products</span>
+                <span className="font-bold text-gray-900">{products.length}</span>
+              </div>
+              
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-600">Low Stock (&le;10)</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${lowStockCount > 0 ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-gray-200 text-gray-500'}`}>
+                  {lowStockCount} Items
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-600">Out of Stock</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${outOfStockCount > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-500'}`}>
+                  {outOfStockCount} Items
+                </span>
+              </div>
            </div>
         </div>
       </div>

@@ -1,112 +1,24 @@
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
-import { Category, Product, Coupon, AIRecommendation, PurchaseOrder, Supplier } from '../types';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, LineChart, Line, AreaChart, Area } from 'recharts';
+import { Category, Product, Coupon, Supplier, PurchaseOrder } from '../types';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, AreaChart, Area } from 'recharts';
 import { 
   LayoutDashboard, Package, Users, ShoppingCart, Settings, Tag, 
   LogOut, Plus, Search, Trash2, Edit2, Download, Upload, 
   RefreshCw, DollarSign, Truck, CreditCard, TrendingUp, TrendingDown, 
-  Image as ImageIcon, FileImage, Brain, AlertTriangle, Zap, MessageCircle,
-  Factory, CheckCircle, XCircle, Send, HardDrive, AlertOctagon, Bell, Mail, Smartphone,
-  LayoutGrid
+  Brain, AlertTriangle, MessageCircle,
+  Factory, CheckCircle, Send, AlertOctagon, Bell, Mail, Smartphone,
+  LayoutGrid, Menu
 } from 'lucide-react';
 import { SystemHealth } from '../components/SystemHealth';
+import { SmartAssistant } from '../components/SmartAssistant';
 
 interface AdminProps {
   onBack: () => void;
 }
 
 type View = 'dashboard' | 'products' | 'orders' | 'users' | 'coupons' | 'settings' | 'assistant' | 'supply_chain' | 'notifications' | 'categories';
-
-// --- AI Logic Helper ---
-const generateInsights = (products: Product[], orders: any[]): AIRecommendation[] => {
-  const recommendations: AIRecommendation[] = [];
-
-  // 1. Calculate Velocity (Sales per day over last 30 days)
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-  const productSales: Record<string, number> = {};
-  
-  orders.forEach(order => {
-    if (new Date(order.date) >= thirtyDaysAgo) {
-      order.items.forEach((item: any) => {
-        productSales[item.id] = (productSales[item.id] || 0) + item.quantity;
-      });
-    }
-  });
-
-  products.forEach(product => {
-    const salesLast30Days = productSales[product.id] || 0;
-    const velocity = salesLast30Days / 30; // Daily sales
-    const daysRemaining = velocity > 0 ? product.stock / velocity : 999;
-
-    // Logic A: Urgent Reorder (Stock < 2 days or absolute stock < 5 for active items)
-    if ((daysRemaining < 2 || product.stock <= 5) && velocity > 0.1) {
-      const reorderQty = Math.ceil(velocity * 30); // Suggest 30 days stock
-      recommendations.push({
-        id: `rec_${product.id}_urgent`,
-        type: 'REORDER',
-        severity: 'URGENT',
-        productId: product.id,
-        productName: product.name,
-        currentStock: product.stock,
-        velocity: Number(velocity.toFixed(2)),
-        daysRemaining: Number(daysRemaining.toFixed(1)),
-        suggestion: {
-          action: 'Restock Immediate',
-          value: reorderQty,
-          rationaleEn: `Critical Low Stock. Will run out in ~${(daysRemaining * 24).toFixed(0)} hours based on sales.`,
-          rationaleAr: `مخزون حرج. سينفذ خلال ${(daysRemaining * 24).toFixed(0)} ساعة بناءً على المبيعات.`
-        }
-      });
-    }
-    // Logic B: Warning (Stock < 7 days)
-    else if (daysRemaining < 7 && velocity > 0.1) {
-      recommendations.push({
-        id: `rec_${product.id}_warn`,
-        type: 'REORDER',
-        severity: 'WARNING',
-        productId: product.id,
-        productName: product.name,
-        currentStock: product.stock,
-        velocity: Number(velocity.toFixed(2)),
-        daysRemaining: Number(daysRemaining.toFixed(1)),
-        suggestion: {
-          action: 'Plan Restock',
-          value: Math.ceil(velocity * 14),
-          rationaleEn: `Stock running low. Coverage for ${daysRemaining.toFixed(0)} days remaining.`,
-          rationaleAr: `المخزون ينخفض. يكفي لمدة ${daysRemaining.toFixed(0)} يوم فقط.`
-        }
-      });
-    }
-    // Logic C: Dead Stock Opportunity (Days Remaining > 90 days & Stock > 20 units)
-    else if (daysRemaining > 90 && product.stock > 20) {
-      recommendations.push({
-        id: `rec_${product.id}_deal`,
-        type: 'DISCOUNT',
-        severity: 'OPPORTUNITY',
-        productId: product.id,
-        productName: product.name,
-        currentStock: product.stock,
-        velocity: Number(velocity.toFixed(2)),
-        daysRemaining: 999, // effectively infinite
-        suggestion: {
-          action: 'Flash Sale',
-          value: '20%',
-          rationaleEn: `Slow moving item. Apply 20% discount to free up capital.`,
-          rationaleAr: `حركة بطيئة. خصم 20% قد يساعد في تحريك المخزون.`
-        }
-      });
-    }
-  });
-
-  return recommendations.sort((a, b) => {
-    const severityOrder = { URGENT: 0, WARNING: 1, OPPORTUNITY: 2 };
-    return severityOrder[a.severity] - severityOrder[b.severity];
-  });
-};
 
 // --- Sub-Components ---
 
@@ -555,178 +467,35 @@ const SupplyChainView: React.FC = () => {
 };
 
 const AIAssistantView: React.FC = () => {
-  const { products, orders, updateProduct, bulkUpdatePrices } = useStore();
-  const recommendations = useMemo(() => generateInsights(products, orders), [products, orders]);
-  
-  const urgentCount = recommendations.filter(r => r.severity === 'URGENT').length;
-  const opportunityCount = recommendations.filter(r => r.severity === 'OPPORTUNITY').length;
-
-  const handleApplyAction = (rec: AIRecommendation) => {
-    if (rec.type === 'DISCOUNT') {
-      const discount = parseInt(rec.suggestion.value as string);
-      const product = products.find(p => p.id === rec.productId);
-      if (product) {
-        const newPrice = Math.floor(product.price * (1 - discount/100));
-        updateProduct({ ...product, price: newPrice });
-        alert(`Applied ${discount}% discount to ${product.name}. New Price: ${newPrice}`);
-      }
-    } else if (rec.type === 'REORDER') {
-      // In a real app, this would generate a PO PDF or email supplier
-      const message = `
-        SUPPLIER ORDER REQUEST
-        ----------------------
-        Product: ${rec.productName}
-        Qty Needed: ${rec.suggestion.value}
-        Urgency: ${rec.severity}
-      `;
-      alert("Reorder Request Generated:\n" + message);
-    }
-  };
-
   return (
     <div className="p-6 max-w-7xl mx-auto animate-fade-in">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-        <div>
-          <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900">
-            <Brain className="text-brand-600" /> Smart Assistant
-          </h2>
-          <p className="text-gray-500 text-sm mt-1">AI-driven inventory analysis & growth suggestions</p>
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 bg-brand-100 rounded-full flex items-center justify-center text-brand-600">
+          <Brain size={24} />
         </div>
-        
-        <div className="flex gap-4">
-           <div className="bg-red-50 px-4 py-2 rounded-xl border border-red-100 flex items-center gap-3">
-              <div className="bg-red-100 p-2 rounded-full text-red-600"><AlertTriangle size={16} /></div>
-              <div>
-                <span className="block text-xl font-bold text-red-700 leading-none">{urgentCount}</span>
-                <span className="text-[10px] text-red-400 uppercase font-bold">Critical</span>
-              </div>
-           </div>
-           <div className="bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 flex items-center gap-3">
-              <div className="bg-blue-100 p-2 rounded-full text-blue-600"><Zap size={16} /></div>
-              <div>
-                <span className="block text-xl font-bold text-blue-700 leading-none">{opportunityCount}</span>
-                <span className="text-[10px] text-blue-400 uppercase font-bold">Opportunities</span>
-              </div>
-           </div>
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Smart Assistant</h2>
+          <p className="text-sm text-gray-500">Chat with Hamess AI to manage inventory, pricing, and alerts.</p>
         </div>
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Left Column: Alerts Feed */}
-        <div className="lg:col-span-2 space-y-6">
-          <h3 className="font-bold text-gray-800 text-lg">Insights Feed</h3>
-          
-          {recommendations.length === 0 && (
-            <div className="bg-white p-8 rounded-2xl border border-gray-100 text-center">
-               <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                 <Zap size={32} />
-               </div>
-               <h4 className="font-bold text-gray-900">All Systems Optimal</h4>
-               <p className="text-gray-500 text-sm">Inventory levels are healthy and prices are competitive.</p>
-            </div>
-          )}
-
-          {recommendations.map(rec => (
-            <div 
-              key={rec.id} 
-              className={`p-5 rounded-2xl border shadow-sm relative overflow-hidden transition hover:shadow-md ${
-                rec.severity === 'URGENT' ? 'bg-white border-red-100 border-l-4 border-l-red-500' : 
-                rec.severity === 'WARNING' ? 'bg-white border-yellow-100 border-l-4 border-l-yellow-500' :
-                'bg-white border-blue-100 border-l-4 border-l-blue-500'
-              }`}
-            >
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                   <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
-                        rec.severity === 'URGENT' ? 'bg-red-100 text-red-700' : 
-                        rec.severity === 'WARNING' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-blue-100 text-blue-700'
-                      }`}>
-                        {rec.severity}
-                      </span>
-                      <span className="text-xs text-gray-400 font-mono">{rec.productId}</span>
-                   </div>
-                   <h4 className="font-bold text-gray-900 text-lg">{rec.productName}</h4>
-                   <div className="flex gap-4 mt-2 text-sm text-gray-600">
-                      <span>Current Stock: <b className="text-gray-900">{rec.currentStock}</b></span>
-                      <span>Daily Sales: <b className="text-gray-900">{rec.velocity}</b>/day</span>
-                   </div>
-                   
-                   <div className="mt-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
-                      <div className="flex gap-2 mb-1">
-                         <span className="text-xs font-bold text-gray-500 uppercase">EN:</span>
-                         <p className="text-sm text-gray-700">{rec.suggestion.rationaleEn}</p>
-                      </div>
-                      <div className="flex gap-2">
-                         <span className="text-xs font-bold text-gray-500 uppercase">AR:</span>
-                         <p className="text-sm text-gray-700 font-sans" dir="rtl">{rec.suggestion.rationaleAr}</p>
-                      </div>
-                   </div>
-                </div>
-
-                <div className="flex flex-col items-end gap-2 min-w-[120px] ml-4">
-                   <div className="text-right">
-                      <span className="block text-xs text-gray-400 uppercase font-bold">Suggestion</span>
-                      <span className="block text-xl font-bold text-brand-600">
-                        {rec.type === 'DISCOUNT' ? `${rec.suggestion.value} OFF` : `+${rec.suggestion.value} Units`}
-                      </span>
-                   </div>
-                   <button 
-                      onClick={() => handleApplyAction(rec)}
-                      className={`mt-2 w-full py-2 px-3 rounded-lg text-xs font-bold text-white shadow-sm transition transform active:scale-95 ${
-                         rec.type === 'DISCOUNT' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-900 hover:bg-black'
-                      }`}
-                   >
-                      {rec.type === 'DISCOUNT' ? 'Apply Offer' : 'Create PO'}
-                   </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Right Column: Alerts Config */}
-        <div className="space-y-6">
-           <div className="bg-gradient-to-br from-brand-900 to-brand-700 p-6 rounded-2xl shadow-lg text-white">
-              <div className="flex items-start justify-between mb-4">
-                 <div>
-                   <h3 className="font-bold text-lg">Admin Alerts</h3>
-                   <p className="text-brand-200 text-xs">Real-time notification service.</p>
-                 </div>
-                 <Bell className="text-brand-200" />
-              </div>
-              <div className="space-y-3">
-                 <div className="flex items-center gap-3 bg-white/10 p-2 rounded-lg">
-                    <div className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center font-bold text-xs">WS</div>
-                    <div>
-                       <p className="text-xs font-bold">Walid El Sheikh</p>
-                       <p className="text-[10px] text-brand-200">Arabic (WhatsApp)</p>
-                    </div>
-                 </div>
-                 <div className="flex items-center gap-3 bg-white/10 p-2 rounded-lg">
-                    <div className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center font-bold text-xs">MS</div>
-                    <div>
-                       <p className="text-xs font-bold">Mahmoud Shehada</p>
-                       <p className="text-[10px] text-brand-200">English (WhatsApp)</p>
-                    </div>
-                 </div>
-              </div>
-              <p className="text-[10px] text-brand-300 mt-4 opacity-80">
-                Status: Online • Twilio Service Active
-              </p>
-           </div>
-        </div>
-
+      <div className="max-w-3xl mx-auto">
+         <SmartAssistant />
       </div>
     </div>
   );
 };
 
-const DashboardView: React.FC = () => {
-  const { orders } = useStore();
+interface DashboardViewProps {
+  onNavigate: (view: View) => void;
+}
+
+const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
+  const { orders, products } = useStore();
   
+  // Low Stock Logic
+  const lowStockThreshold = 10;
+  const lowStockItems = products.filter(p => p.stock <= lowStockThreshold).sort((a, b) => a.stock - b.stock);
+
   // Financial Calculations
   const totalRevenue = orders.reduce((acc, o) => acc + o.total, 0);
   
@@ -756,8 +525,44 @@ const DashboardView: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6">
-      {/* SYSTEM HEALTH CHECK - NEW COMPONENT */}
+      {/* SYSTEM HEALTH CHECK */}
       <SystemHealth />
+
+      {/* LOW STOCK ALERT BANNER - NEW */}
+      {lowStockItems.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center gap-6 animate-fade-in">
+          <div className="flex items-center gap-4">
+            <div className="bg-white p-3 rounded-xl border border-red-100 text-red-600 shadow-sm">
+               <AlertTriangle size={32} />
+            </div>
+            <div>
+               <h3 className="text-xl font-bold text-red-900">Low Stock Alert</h3>
+               <p className="text-red-700">{lowStockItems.length} items are below the reorder threshold (10 units).</p>
+            </div>
+          </div>
+          
+          <div className="flex-1 w-full grid grid-cols-2 md:grid-cols-4 gap-3">
+             {lowStockItems.slice(0, 4).map(item => (
+               <div key={item.id} className="bg-white p-2 rounded-lg border border-red-100 flex items-center gap-2">
+                  <div className="w-10 h-10 bg-gray-100 rounded-md overflow-hidden flex-shrink-0">
+                    <img src={item.image} className="w-full h-full object-cover" />
+                  </div>
+                  <div className="overflow-hidden min-w-0">
+                     <p className="text-xs font-bold text-gray-900 truncate">{item.name}</p>
+                     <p className="text-[10px] text-red-600 font-bold">{item.stock} left</p>
+                  </div>
+               </div>
+             ))}
+          </div>
+
+          <button 
+            onClick={() => onNavigate('products')}
+            className="bg-red-600 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-lg shadow-red-200 hover:bg-red-700 transition whitespace-nowrap flex-shrink-0"
+          >
+             Review All
+          </button>
+        </div>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -877,7 +682,7 @@ const ProductsView: React.FC = () => {
 
   // Product Form State
   const [formData, setFormData] = useState<Partial<Product>>({
-    category: Category.PARTY_SUPPLIES,
+    category: Category.BIRTHDAY_PARTY,
     isCustomizable: false,
     stock: 0,
     price: 0,
@@ -916,7 +721,7 @@ const ProductsView: React.FC = () => {
   const handleAdd = () => {
     setEditingProduct(null);
     setFormData({
-      category: Category.PARTY_SUPPLIES,
+      category: Category.BIRTHDAY_PARTY,
       isCustomizable: false,
       stock: 10,
       price: 100,
@@ -946,31 +751,27 @@ const ProductsView: React.FC = () => {
       const productId = editingProduct ? editingProduct.id : `prod_${Date.now()}_${Math.random().toString(36).substr(2,5)}`;
       finalProduct.id = productId;
       
-      // 1. Save Product Basic Info (Critical Path) - ATOMIC SAVE
-      if (!finalProduct.image) {
-          finalProduct.image = 'https://via.placeholder.com/400?text=No+Image'; 
-      }
-
-      if (editingProduct) {
-        await updateProduct(finalProduct);
-      } else {
-        await addProduct(finalProduct);
-      }
-
-      // 2. Handle Image Upload (Secondary Path)
+      // 1. Handle Image Upload FIRST
       if (selectedFile) {
          try {
             const uploadedImg = await uploadProductImage(selectedFile, productId);
             finalProduct.imageId = uploadedImg.id;
-            const productToPersist = {
-              ...finalProduct,
-              image: uploadedImg.path 
-            };
-            await updateProduct(productToPersist);
+            // Clear any data URI from the image field as we now rely on imageId
+            finalProduct.image = ''; 
          } catch (imgErr) {
             console.error("Image upload failed", imgErr);
             alert("Product saved successfully, but image upload failed.");
          }
+      } else if (!finalProduct.image) {
+         // If no file selected and no existing image, set placeholder
+         finalProduct.image = 'https://via.placeholder.com/400?text=No+Image';
+      }
+
+      // 2. Save Product
+      if (editingProduct) {
+        await updateProduct(finalProduct);
+      } else {
+        await addProduct(finalProduct);
       }
 
       setShowModal(false);
@@ -1484,11 +1285,11 @@ const SettingsView: React.FC = () => {
             <AlertOctagon size={20} /> Danger Zone
           </h3>
           <p className="text-sm text-red-600 mb-4">
-            Use this to wipe all products, orders, and data if the system becomes unstable or you want to start fresh. This cannot be undone.
+            Use this to wipe all data and restore the permanent 25 factory products.
           </p>
           <button 
              onClick={() => {
-                if(confirm("Are you absolutely sure? This will delete ALL products, images, and orders.")) {
+                if(confirm("Are you absolutely sure? This will delete custom changes and restore defaults.")) {
                    resetSystem();
                 }
              }}
@@ -1537,9 +1338,9 @@ const UsersView: React.FC = () => {
                 <td className="p-4 text-right">
                    <button 
                      onClick={() => toggleUserAdmin(u.id)}
-                     className="text-xs font-medium text-brand-600 hover:underline"
+                     className={`px-3 py-1 rounded-lg text-xs font-bold transition ${u.isAdmin ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-purple-100 text-purple-600 hover:bg-purple-200'}`}
                    >
-                     {u.isAdmin ? 'Revoke Admin' : 'Promote to Admin'}
+                     {u.isAdmin ? 'Revoke Admin' : 'Make Admin'}
                    </button>
                 </td>
               </tr>
@@ -1551,74 +1352,120 @@ const UsersView: React.FC = () => {
   );
 };
 
-// --- Main Layout ---
-
 export const Admin: React.FC<AdminProps> = ({ onBack }) => {
   const [currentView, setCurrentView] = useState<View>('dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const navItems: { id: View, label: string, icon: any }[] = [
+  const renderView = () => {
+    switch (currentView) {
+      case 'dashboard': return <DashboardView onNavigate={setCurrentView} />;
+      case 'products': return <ProductsView />;
+      case 'orders': return <OrdersView />;
+      case 'users': return <UsersView />;
+      case 'coupons': return <CouponsView />;
+      case 'settings': return <SettingsView />;
+      case 'assistant': return <AIAssistantView />;
+      case 'supply_chain': return <SupplyChainView />;
+      case 'notifications': return <NotificationsView />;
+      case 'categories': return <CategoriesView />;
+      default: return <DashboardView onNavigate={setCurrentView} />;
+    }
+  };
+
+  const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'notifications', label: 'Notifications', icon: Bell }, 
-    { id: 'assistant', label: 'Smart Assistant', icon: Brain },
-    { id: 'supply_chain', label: 'Supply Chain', icon: Factory },
-    { id: 'products', label: 'Products', icon: Package },
+    { id: 'products', label: 'Inventory', icon: Package },
     { id: 'categories', label: 'Categories', icon: LayoutGrid },
     { id: 'orders', label: 'Orders', icon: ShoppingCart },
+    { id: 'supply_chain', label: 'Supply Chain', icon: Factory },
+    { id: 'assistant', label: 'AI Assistant', icon: Brain },
     { id: 'users', label: 'Users', icon: Users },
     { id: 'coupons', label: 'Coupons', icon: Tag },
+    { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row">
-      {/* Sidebar */}
-      <aside className="bg-gray-900 text-gray-300 w-full md:w-64 flex-shrink-0 flex flex-col">
-        <div className="p-6 border-b border-gray-800 flex items-center justify-between">
-          <h1 className="text-white font-bold text-xl tracking-tight">Hamess Admin</h1>
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
+      {/* Sidebar - Desktop */}
+      <div className="w-64 bg-white border-r border-gray-200 flex-shrink-0 hidden md:flex flex-col z-20 shadow-sm">
+        <div className="p-6 flex items-center gap-3">
+           <div className="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center text-white font-serif font-bold text-xl shadow-lg shadow-brand-200">HP</div>
+           <span className="font-bold text-xl tracking-tight text-gray-900">Admin Panel</span>
         </div>
         
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          {navItems.map(item => (
-            <button
-              key={item.id}
-              onClick={() => setCurrentView(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${
-                currentView === item.id ? 'bg-brand-600 text-white shadow-lg shadow-brand-900/50' : 'hover:bg-gray-800'
-              }`}
-            >
-              <item.icon size={20} />
-              <span className="font-medium">{item.label}</span>
-            </button>
-          ))}
-        </nav>
-
-        <div className="p-4 border-t border-gray-800">
-          <button onClick={onBack} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-gray-800 transition">
-            <LogOut size={20} />
-            <span className="font-medium">Exit Admin</span>
-          </button>
+        <div className="flex-1 overflow-y-auto py-4 px-4 space-y-1">
+           {navItems.map(item => (
+             <button
+               key={item.id}
+               onClick={() => setCurrentView(item.id as View)}
+               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition duration-200 ${
+                 currentView === item.id 
+                   ? 'bg-brand-50 text-brand-700 shadow-sm ring-1 ring-brand-100' 
+                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+               }`}
+             >
+               <item.icon size={20} className={currentView === item.id ? 'text-brand-600' : 'text-gray-400'} />
+               {item.label}
+             </button>
+           ))}
         </div>
-      </aside>
+
+        <div className="p-4 border-t border-gray-100">
+           <button onClick={onBack} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 transition">
+             <LogOut size={20} /> Exit Dashboard
+           </button>
+        </div>
+      </div>
+
+      {/* Mobile Header */}
+      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 z-30 flex items-center justify-between px-4">
+         <div className="flex items-center gap-3">
+            <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 hover:bg-gray-100 rounded-lg">
+               <Menu size={24} className="text-gray-600" />
+            </button>
+            <span className="font-bold text-lg text-gray-900">Admin</span>
+         </div>
+         <button onClick={onBack} className="p-2 text-gray-500 hover:text-red-600">
+             <LogOut size={24} />
+         </button>
+      </div>
+
+      {/* Mobile Menu Drawer */}
+      {isMobileMenuOpen && (
+         <div className="fixed inset-0 z-40 md:hidden flex">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}></div>
+            <div className="relative w-64 bg-white h-full shadow-2xl flex flex-col animate-slide-in">
+               <div className="p-6 border-b border-gray-100">
+                  <span className="font-bold text-xl text-gray-900">Menu</span>
+               </div>
+               <div className="flex-1 overflow-y-auto p-4 space-y-1">
+                  {navItems.map(item => (
+                     <button
+                        key={item.id}
+                        onClick={() => {
+                           setCurrentView(item.id as View);
+                           setIsMobileMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${
+                           currentView === item.id 
+                           ? 'bg-brand-50 text-brand-700' 
+                           : 'text-gray-600'
+                        }`}
+                     >
+                        <item.icon size={20} />
+                        {item.label}
+                     </button>
+                  ))}
+               </div>
+            </div>
+         </div>
+      )}
 
       {/* Main Content */}
-      <main className="flex-1 h-screen overflow-y-auto relative">
-        <header className="bg-white border-b border-gray-200 p-4 sticky top-0 z-10 flex justify-between items-center md:hidden">
-           <span className="font-bold text-gray-800 capitalize">{currentView.replace('_', ' ')}</span>
-        </header>
-        
-        <div className="animate-fade-in">
-          {currentView === 'dashboard' && <DashboardView />}
-          {currentView === 'assistant' && <AIAssistantView />}
-          {currentView === 'notifications' && <NotificationsView />} 
-          {currentView === 'supply_chain' && <SupplyChainView />}
-          {currentView === 'products' && <ProductsView />}
-          {currentView === 'categories' && <CategoriesView />}
-          {currentView === 'orders' && <OrdersView />}
-          {currentView === 'users' && <UsersView />}
-          {currentView === 'coupons' && <CouponsView />}
-          {currentView === 'settings' && <SettingsView />}
-        </div>
-      </main>
+      <div className="flex-1 overflow-y-auto h-full w-full md:bg-gray-50 pt-16 md:pt-0">
+         {renderView()}
+      </div>
     </div>
   );
 };

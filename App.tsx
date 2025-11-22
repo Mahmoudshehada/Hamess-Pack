@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect } from 'react';
 import { StoreProvider, useStore, Notification } from './context/StoreContext';
 import { BottomNav } from './components/BottomNav';
@@ -44,11 +42,18 @@ const Toast: React.FC<{ notification: Notification; onClose: () => void }> = ({ 
   };
 
   return (
-    <div className={`${colors[notification.type]} p-4 rounded-lg shadow-lg flex items-center gap-3 min-w-[300px] animate-slide-in relative`}>
+    <div className={`${colors[notification.type]} p-4 pr-12 rounded-lg shadow-lg flex items-center gap-3 min-w-[300px] max-w-sm animate-slide-in relative shadow-gray-200`}>
       {icons[notification.type]}
-      <p className="text-sm font-medium text-gray-800 pr-6">{notification.message}</p>
-      <button onClick={onClose} className="absolute top-2 right-2 text-gray-400 hover:text-gray-600">
-        <X size={14} />
+      <p className="text-sm font-medium text-gray-800 break-words flex-1">{notification.message}</p>
+      <button 
+        onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+        }} 
+        className="absolute top-1 right-1 p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors z-50"
+        aria-label="Close"
+      >
+        <X size={20} strokeWidth={2.5} />
       </button>
     </div>
   );

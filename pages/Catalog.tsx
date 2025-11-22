@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Product, Category } from '../types';
 import { useStore } from '../context/StoreContext';
@@ -9,7 +10,7 @@ interface CatalogProps {
 }
 
 export const Catalog: React.FC<CatalogProps> = ({ initialCategory, onProductClick }) => {
-  const { products } = useStore();
+  const { products, user } = useStore();
   const [activeCategory, setActiveCategory] = useState<string>(initialCategory || 'All');
   const [searchQuery, setSearchQuery] = useState('');
   const [priceSort, setPriceSort] = useState<'asc' | 'desc' | null>(null);
@@ -23,7 +24,10 @@ export const Catalog: React.FC<CatalogProps> = ({ initialCategory, onProductClic
 
     if (searchQuery) {
       const lower = searchQuery.toLowerCase();
-      result = result.filter(p => p.name.toLowerCase().includes(lower));
+      result = result.filter(p => 
+        p.name.toLowerCase().includes(lower) || 
+        (p.nameAr && p.nameAr.includes(searchQuery))
+      );
     }
 
     if (priceSort) {
@@ -32,6 +36,11 @@ export const Catalog: React.FC<CatalogProps> = ({ initialCategory, onProductClic
 
     return result;
   }, [products, activeCategory, searchQuery, priceSort]);
+
+  const getDisplayName = (product: Product) => {
+    if (user?.language === 'ar' && product.nameAr) return product.nameAr;
+    return product.name;
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 w-full">
@@ -43,7 +52,7 @@ export const Catalog: React.FC<CatalogProps> = ({ initialCategory, onProductClic
             <div className="relative flex-1">
               <input
                 type="text"
-                placeholder="Search decorations, gifts..."
+                placeholder={user?.language === 'ar' ? "بحث في المنتجات..." : "Search decorations, gifts..."}
                 className="w-full pl-12 pr-4 py-3 md:py-4 rounded-xl border-none shadow-sm focus:ring-2 focus:ring-brand-500 bg-white text-base"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -98,7 +107,7 @@ export const Catalog: React.FC<CatalogProps> = ({ initialCategory, onProductClic
               className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition duration-300 cursor-pointer group flex flex-col"
             >
               <div className="aspect-square relative bg-gray-100 overflow-hidden">
-                <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition duration-700" />
+                <img src={product.image} alt={getDisplayName(product)} className="w-full h-full object-cover group-hover:scale-110 transition duration-700" />
                 {product.stock < 5 && (
                   <span className="absolute bottom-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full">
                     Low Stock
@@ -107,7 +116,7 @@ export const Catalog: React.FC<CatalogProps> = ({ initialCategory, onProductClic
               </div>
               <div className="p-4 flex flex-col flex-grow">
                 <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider">{product.category}</p>
-                <h3 className="font-medium text-gray-900 text-sm md:text-base line-clamp-2 mb-2 flex-grow">{product.name}</h3>
+                <h3 className="font-medium text-gray-900 text-sm md:text-base line-clamp-2 mb-2 flex-grow text-right-rtl">{getDisplayName(product)}</h3>
                 <div className="mt-auto flex items-center justify-between">
                   <span className="font-bold text-brand-600 text-lg">{product.price} EGP</span>
                   <div className="w-8 h-8 bg-brand-50 text-brand-600 rounded-full flex items-center justify-center group-hover:bg-brand-600 group-hover:text-white transition">

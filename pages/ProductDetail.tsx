@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Product } from '../types';
 import { useStore } from '../context/StoreContext';
@@ -9,7 +10,7 @@ interface ProductDetailProps {
 }
 
 export const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack }) => {
-  const { products, addToCart } = useStore();
+  const { products, addToCart, user } = useStore();
   const product = products.find(p => p.id === productId);
   
   const [quantity, setQuantity] = useState(1);
@@ -18,6 +19,9 @@ export const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack 
   const [isAdded, setIsAdded] = useState(false);
 
   if (!product) return <div>Product not found</div>;
+
+  const getDisplayName = () => (user?.language === 'ar' && product.nameAr) ? product.nameAr : product.name;
+  const getDescription = () => (user?.language === 'ar' && product.descriptionAr) ? product.descriptionAr : product.description;
 
   const handleAddToCart = () => {
     addToCart(product, quantity, selectedColor, customNote);
@@ -49,14 +53,14 @@ export const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack 
               </div>
             </div>
             
-            <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+            <img src={product.image} alt={getDisplayName()} className="w-full h-full object-cover" />
           </div>
 
           {/* Details Section */}
           <div className="flex-1 p-6 md:p-10 flex flex-col relative">
             <div className="md:flex justify-between items-start mb-4">
                <div className="mb-2 md:mb-0">
-                 <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">{product.name}</h1>
+                 <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">{getDisplayName()}</h1>
                  <div className="flex items-center gap-2">
                     <div className="flex text-yellow-400">
                       {[...Array(5)].map((_, i) => (
@@ -74,8 +78,8 @@ export const ProductDetail: React.FC<ProductDetailProps> = ({ productId, onBack 
                </div>
             </div>
 
-            <p className="text-gray-600 leading-relaxed mb-8 border-b border-gray-100 pb-6">
-              {product.description}
+            <p className="text-gray-600 leading-relaxed mb-8 border-b border-gray-100 pb-6 text-right-rtl">
+              {getDescription()}
             </p>
 
             <div className="space-y-6 mb-8">

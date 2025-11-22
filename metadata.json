@@ -1,7 +1,5 @@
 {
   "name": "Hamess Pack",
   "description": "A complete retail application for party supplies, gifts, and custom packaging.",
-  "requestFramePermissions": [
-    "geolocation"
-  ]
+  "requestFramePermissions": []
 }

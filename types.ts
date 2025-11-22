@@ -1,11 +1,12 @@
 
-
 export interface Product {
   id: string;
   name: string;
+  nameAr?: string; // Arabic Name
   price: number;
   category: Category;
   description: string;
+  descriptionAr?: string; // Arabic Description
   image: string; // This will now hold the resolved Data URI or fallback URL
   imageId?: string; // Link to StoredImage
   imagePath?: string; // Virtual path /uploads/products/...
@@ -27,11 +28,16 @@ export interface StoredImage {
 }
 
 export enum Category {
-  PARTY_SUPPLIES = 'Party Supplies',
   GIFTS = 'Gifts',
-  DECORATIONS = 'Decorations',
-  EVENT_ACCESSORIES = 'Event Accessories',
-  PACKAGING = 'Packaging',
+  KITCHEN_TOOLS = 'Kitchen Tools',
+  BIRTHDAY_PARTY = 'Birthday & Party',
+  BALLOONS_HELIUM = 'Balloons & Helium',
+  CUPS_PLATES = 'Cups & Plates',
+  BAGS_PACKAGING = 'Bags & Packaging',
+  CAFE_SUPPLIES = 'Cafe Supplies',
+  KIDS_TOYS = 'Kids Toys',
+  HALLOWEEN = 'Halloween',
+  PACKAGING_MATERIALS = 'Packaging Materials',
 }
 
 export interface CartItem extends Product {
@@ -123,7 +129,7 @@ export interface NotificationAdminProfile {
   name: string;
   phone: string;
   language: 'en' | 'ar';
-  channels: ('WHATSAPP' | 'PUSH' | 'EMAIL')[];
+  channels: ('WHATSAPP' | 'PUSH' | 'EMAIL' | 'IN_APP')[];
 }
 
 export interface NotificationConfig {
@@ -177,6 +183,28 @@ export interface AIRecommendation {
     rationaleEn: string;
     rationaleAr: string;
   };
+}
+
+export interface AIActionPayload {
+  action_type: 'create_promotion' | 'change_price' | 'create_po' | 'notify_admin' | 'update_product' | 'none';
+  params: any;
+}
+
+export interface AIChatResponse {
+  human_en: string;
+  human_ar: string;
+  action_payload: AIActionPayload | null;
+  confidence: number;
+  explanation: string;
+}
+
+export interface AIChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string; // The displayed content based on language preference
+  payload?: AIActionPayload | null;
+  timestamp: number;
+  status?: 'pending_action' | 'executed' | 'cancelled';
 }
 
 // --- Auto-Reorder & Forecasting Types ---
